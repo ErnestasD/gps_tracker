@@ -736,6 +736,44 @@ export const domainCreateSchema = z.object({
     .regex(/^(?!-)[a-z0-9-]{1,63}(?<!-)(\.(?!-)[a-z0-9-]{1,63}(?<!-))+$/, 'must be a bare hostname'),
 })
 
+/**
+ * The address a white-label tenant's mail goes out AS (ADR-036, audit W-3).
+ *
+ * Two fields because the DNS proof and the visible address are separate things: DKIM is published on
+ * the registrable DOMAIN, while what a recipient reads is `<mailbox>@<domain>`. Asking for one
+ * combined address string would mean parsing it back apart to know which zone to check.
+ *
+ * The mailbox is deliberately narrower than RFC 5321 allows. A local part may legally contain
+ * quotes, spaces and `@` inside a quoted string; every one of those is a header-injection shape
+ * heading for a `From:` line, and no reseller has ever wanted `"weird name"@klientas.lt` as their
+ * alert sender. Dot-atom without a leading, trailing or doubled dot is the whole useful range.
+ */
+export const sendingDomainCreateSchema = z.object({
+  domain: z
+    .string()
+    .min(3)
+    .max(253)
+    .regex(/^(?!-)[a-z0-9-]{1,63}(?<!-)(\.(?!-)[a-z0-9-]{1,63}(?<!-))+$/, 'must be a bare hostname'),
+  mailbox: z
+    .string()
+    .min(1)
+    .max(64) // RFC 5321 §4.5.3.1.1 caps the local part at 64 octets
+    .regex(/^[a-z0-9!#$%&'*+/=?^_`{|}~-]+(\.[a-z0-9!#$%&'*+/=?^_`{|}~-]+)*$/, 'must be a plain mailbox name'),
+})
+
+/** What the settings screen reads back. `address` is derived, never stored twice. */
+export const sendingDomainReadSchema = z.object({
+  domain: z.string(),
+  mailbox: z.string(),
+  address: z.string(),
+  status: z.enum(['pending', 'verified', 'failed']),
+  /** the three CNAMEs the tenant must publish; empty once we stop needing to show them */
+  dkimRecords: z.array(z.object({ name: z.string(), value: z.string() })),
+  verifiedAt: z.string().nullable(),
+})
+
+export type SendingDomainRead = z.infer<typeof sendingDomainReadSchema>
+
 // ── quarantine claim (platform) ──────────────────────────────────────────────
 export const quarantineClaimSchema = z.object({
   tenantId: z.string().uuid(),

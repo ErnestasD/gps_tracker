@@ -314,7 +314,8 @@
       "document": "Dokument",
       "maintenancePlan": "Plan przeglądów",
       "branding_asset": "Grafika marki",
-      "deal_registration": "Rejestracja transakcji"
+      "deal_registration": "Rejestracja transakcji",
+      "sendingDomain": "Domena wysyłki"
     },
     "a": {
       "create": "Utworzono",
@@ -2075,6 +2076,29 @@
       "support_email": "Dodaj adres pomocy — tam trafią klienci po kliknięciu Odpowiedz",
       "colors": "Wybierz kolor podstawowy",
       "own_domain": "Przejdź na własną domenę — na naszej klienci widzą naszą nazwę hosta"
+    }
+  },
+  "sending": {
+    "title": "Wysyłaj wiadomości z własnego adresu",
+    "desc": "Alerty i e-maile o koncie wychodzą od nas, dopóki nie zweryfikujesz własnej domeny. Wszystko wewnątrz wiadomości jest już Twoje; tu chodzi o pole Od.",
+    "unavailable": "Jeszcze niedostępne w tej instalacji. Twoje wiadomości nadal są wysyłane i nic z Twojej konfiguracji się nie zmienia.",
+    "mailboxLabel": "Nazwa skrzynki",
+    "domainLabel": "Twoja domena",
+    "add": "Ustaw domenę wysyłki",
+    "verify": "Sprawdź weryfikację",
+    "remove": "Usuń",
+    "copied": "Skopiowano",
+    "recordType": "Typ",
+    "recordName": "Nazwa / Host",
+    "recordValue": "Wartość / Cel",
+    "pendingNote": "Dodaj te trzy rekordy do swojego DNS i naciśnij Sprawdź. Do czasu weryfikacji wiadomości nadal wychodzą z naszego adresu — nic się nie zatrzymuje.",
+    "slowNote": "Weryfikacja może potrwać do godziny po opublikowaniu rekordów. To najwolniejszy krok całej konfiguracji.",
+    "badDomain": "Ta domena lub nazwa skrzynki jest nieprawidłowa.",
+    "upstreamError": "Nie udało się połączyć z naszym dostawcą poczty. To po naszej stronie — spróbuj za chwilę.",
+    "status": {
+      "pending": "Oczekiwanie na DNS",
+      "verified": "Zweryfikowana",
+      "failed": "Niezweryfikowana"
     }
   }
 }

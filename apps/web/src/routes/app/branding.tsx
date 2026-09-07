@@ -7,6 +7,7 @@ import { KB } from '@orbetra/kb'
 
 import { HelpLink } from '@/components/kb/HelpLink'
 import { AdminButton, AdminInput, AdminLabel, Badge, PageHeader } from '@/components/admin/AdminKit'
+import { SendingDomainCard } from '@/components/admin/SendingDomainCard'
 import { ConfirmDialog } from '@/components/admin/ConfirmDialog'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { ApiError } from '@/lib/http'
@@ -231,6 +232,11 @@ export function BrandingPage() {
           </div>
         </form>
       </div>
+
+      {/* The sending identity sits BELOW the app domains, in the order a reseller does the work:
+          the address their customers browse to first, the address their mail leaves from second.
+          They are separate proofs about possibly different names (ADR-036), so separate cards. */}
+      <SendingDomainCard />
 
       <div className="admin-card p-5">
         <h3 className="mb-4 text-sm font-semibold" style={{ color: 'var(--admin-ink)' }}>

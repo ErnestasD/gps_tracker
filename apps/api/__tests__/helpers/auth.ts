@@ -67,6 +67,17 @@ export function fakeDb(users: AuthUserRow[] = []): Db {
     // fake holds no uploads" is an honest answer to that — unlike the write paths, which have no
     // sensible inert result and must stay unavailable here.
     tenantAssets: { meta: () => Promise.resolve([]), byHash: notImpl, put: notImpl, remove: notImpl },
+    // same split as tenantAssets: the two READS have an honest inert answer — this fake holds no
+    // sending identity, and "none" is exactly what a tenant without one has — while the writes reach
+    // SES and have no sensible result to invent.
+    tenantSendingDomains: {
+      get: () => Promise.resolve(null),
+      verifiedAddress: () => Promise.resolve(null),
+      put: notImpl,
+      markVerified: notImpl,
+      markFailed: notImpl,
+      remove: notImpl,
+    },
     accounts: { ...repo, updatePreferences: notImpl },
     users: repo,
     devices: { list: notImpl, countActive: notImpl, listAllForRegistry: notImpl, imeisIn: notImpl, get: notImpl, getByImei: notImpl, create: notImpl, update: notImpl, retire: notImpl },

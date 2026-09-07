@@ -30,6 +30,33 @@ let t1: string
 let t2: string
 let t1Token: string
 let t2Token: string
+/**
+ * A fake SES identity gateway (ADR-036). Records every call, so a test can assert not merely the
+ * response but WHICH identity we asked AWS about — the routes are thin wrappers around three calls
+ * and getting the wrong domain to the right call is the mistake worth catching.
+ */
+const sesState = {
+  calls: [] as { op: string; domain: string }[],
+  status: 'pending' as 'pending' | 'verified' | 'failed',
+  failWith: null as string | null,
+}
+const fakeSes = {
+  create: (domain: string) => {
+    sesState.calls.push({ op: 'create', domain })
+    if (sesState.failWith !== null) return Promise.reject(new Error(sesState.failWith))
+    return Promise.resolve({ dkimTokens: ['tok1', 'tok2', 'tok3'], status: sesState.status })
+  },
+  get: (domain: string) => {
+    sesState.calls.push({ op: 'get', domain })
+    if (sesState.failWith !== null) return Promise.reject(new Error(sesState.failWith))
+    return Promise.resolve({ dkimTokens: ['tok1', 'tok2', 'tok3'], status: sesState.status })
+  },
+  remove: (domain: string) => {
+    sesState.calls.push({ op: 'remove', domain })
+    return Promise.resolve()
+  },
+}
+
 // injected DNS resolver — tests set the record content per domain
 const txtRecords = new Map<string, string[][]>()
 const cnameRecords = new Map<string, string[]>()
@@ -90,6 +117,7 @@ beforeAll(async () => {
     mapToken: () => Promise.resolve({ token: 'tk.temp', expiresAt: '2026-09-06T11:00:00.000Z' }),
     platformDomain: 'orbetra.test',
     edgeHostname: 'dash.orbetra.test',
+    ses: fakeSes,
   })
   httpServer = serve({ fetch: app.fetch, port: 0, createServer }) as ReturnType<typeof createServer>
   port = await new Promise<number>((r) => httpServer.on('listening', () => r((httpServer.address() as { port: number }).port)))
@@ -970,5 +998,118 @@ describe('W2 readiness gates the first action that creates an audience', () => {
     expect(bodyText).toContain('not_ready')
     // …the reason is withheld: the unpinned reseller above gets it, this reader does not
     expect(bodyText).not.toContain('no_verified_domain')
+  })
+})
+
+/**
+ * The tenant's own sending identity (ADR-036, audit W-3).
+ *
+ * The last vendor-named line in a reseller's mail. Everything inside the message was already theirs
+ * — logo, colours, links, display name — while `From:` read `hello@orbetra.com` on every activation,
+ * every reset and every alert, because MAIL_FROM is one process-wide value every tenant borrowed.
+ */
+describe('W3 tenant sending domain', () => {
+  beforeEach(() => {
+    sesState.calls = []
+    sesState.status = 'pending'
+    sesState.failWith = null
+  })
+
+  it('starts empty, and says so with 200 rather than 404', async () => {
+    // "no sending domain yet" is the ordinary state of every tenant; a settings screen that has to
+    // treat its own empty case as an error renders a red box on first visit
+    const res = await req('/v1/tenant/sending-domain', t1Token)
+    expect(res.status).toBe(200)
+    expect(await res.json()).toBeNull()
+  })
+
+  it('creating one returns the three DKIM records to publish, ready to paste', async () => {
+    const res = await req('/v1/tenant/sending-domain', t1Token, 'POST', { domain: 'klientas.lt', mailbox: 'alertai' })
+    expect(res.status).toBe(201)
+    const body = (await res.json()) as { address: string; status: string; dkimRecords: { name: string; value: string }[]; verifiedAt: string | null }
+    expect(body.address).toBe('alertai@klientas.lt')
+    expect(body.status).toBe('pending')
+    expect(body.verifiedAt).toBeNull()
+    // the name carries the TENANT's domain, the target carries ours — the half people transpose
+    expect(body.dkimRecords).toEqual([
+      { name: 'tok1._domainkey.klientas.lt', value: 'tok1.dkim.amazonses.com' },
+      { name: 'tok2._domainkey.klientas.lt', value: 'tok2.dkim.amazonses.com' },
+      { name: 'tok3._domainkey.klientas.lt', value: 'tok3.dkim.amazonses.com' },
+    ])
+    expect(sesState.calls).toEqual([{ op: 'create', domain: 'klientas.lt' }])
+  })
+
+  it('★ a PENDING identity does not change what the tenant sends as', async () => {
+    // The whole failure mode this guards: sending as a domain whose DKIM records are not published
+    // fails DMARC and lands the customer's alerts in spam. Unverified must never become unsent.
+    await req('/v1/tenant/sending-domain', t1Token, 'POST', { domain: 'klientas.lt', mailbox: 'alertai' })
+    const verify = await req('/v1/tenant/sending-domain/verify', t1Token, 'POST')
+    expect(((await verify.json()) as { status: string; verifiedAt: string | null }).verifiedAt).toBeNull()
+    // …and the send path agrees, which is the assertion that actually matters
+    expect(await db.tenantSendingDomains.verifiedAddress(t1)).toBeNull()
+  })
+
+  it('★ once SES reports SUCCESS, the send path picks the address up', async () => {
+    await req('/v1/tenant/sending-domain', t1Token, 'POST', { domain: 'klientas.lt', mailbox: 'alertai' })
+    sesState.status = 'verified'
+    const verify = await req('/v1/tenant/sending-domain/verify', t1Token, 'POST')
+    const body = (await verify.json()) as { status: string; verifiedAt: string | null }
+    expect(body.status).toBe('verified')
+    expect(body.verifiedAt).not.toBeNull()
+    expect(await db.tenantSendingDomains.verifiedAddress(t1)).toBe('alertai@klientas.lt')
+  })
+
+  it('★ re-submitting a DIFFERENT domain drops the old verification', async () => {
+    // the new domain has proved nothing; carrying the old flag over would send mail as a domain that
+    // never signed for us
+    await req('/v1/tenant/sending-domain', t1Token, 'POST', { domain: 'klientas.lt', mailbox: 'alertai' })
+    sesState.status = 'verified'
+    await req('/v1/tenant/sending-domain/verify', t1Token, 'POST')
+    expect(await db.tenantSendingDomains.verifiedAddress(t1)).toBe('alertai@klientas.lt')
+
+    await req('/v1/tenant/sending-domain', t1Token, 'POST', { domain: 'kitas.lt', mailbox: 'info' })
+    expect(await db.tenantSendingDomains.verifiedAddress(t1)).toBeNull()
+  })
+
+  it('deleting stops the sending immediately, and asks SES to drop the identity', async () => {
+    await req('/v1/tenant/sending-domain', t1Token, 'POST', { domain: 'klientas.lt', mailbox: 'alertai' })
+    sesState.status = 'verified'
+    await req('/v1/tenant/sending-domain/verify', t1Token, 'POST')
+    sesState.calls = []
+
+    expect((await req('/v1/tenant/sending-domain', t1Token, 'DELETE')).status).toBe(200)
+    expect(await db.tenantSendingDomains.verifiedAddress(t1)).toBeNull()
+    expect(sesState.calls).toEqual([{ op: 'remove', domain: 'klientas.lt' }])
+    expect((await req('/v1/tenant/sending-domain', t1Token, 'DELETE')).status).toBe(404)
+  })
+
+  it('an AWS fault is 502, never a 400 blaming the hostname the tenant typed', async () => {
+    // a broken IAM policy and an AWS outage are OURS; telling the reseller to check their domain
+    // sends them to re-type something that was never the problem
+    sesState.failWith = 'AccessDeniedException'
+    const res = await req('/v1/tenant/sending-domain', t1Token, 'POST', { domain: 'klientas.lt', mailbox: 'alertai' })
+    expect(res.status).toBe(502)
+  })
+
+  it('rejects a mailbox that could add a header line', async () => {
+    for (const mailbox of ['a b', 'a@b', 'a"b', 'a\nb', '', '.leading', 'trailing.']) {
+      const res = await req('/v1/tenant/sending-domain', t1Token, 'POST', { domain: 'klientas.lt', mailbox })
+      expect(res.status, JSON.stringify(mailbox)).toBe(400)
+    }
+  })
+
+  it('★ one tenant cannot read or change another tenant sending identity', async () => {
+    await req('/v1/tenant/sending-domain', t1Token, 'POST', { domain: 'klientas.lt', mailbox: 'alertai' })
+    expect(await (await req('/v1/tenant/sending-domain', t2Token)).json()).toBeNull()
+    expect((await req('/v1/tenant/sending-domain', t2Token, 'DELETE')).status).toBe(404)
+    // …and t1's row is untouched by t2 having tried
+    expect(((await (await req('/v1/tenant/sending-domain', t1Token)).json()) as { domain: string }).domain).toBe('klientas.lt')
+  })
+
+  it('is admin-only, and tenant-wide', async () => {
+    const viewer = await mintTestToken({ userId: 'v-sd', tenantId: t1, role: 'viewer' })
+    const pinned = await mintTestToken({ userId: 'p-sd', tenantId: t1, role: 'tsp_admin', accountId: 'acc-x' })
+    expect((await req('/v1/tenant/sending-domain', viewer)).status).toBe(403)
+    expect((await req('/v1/tenant/sending-domain', pinned)).status).toBe(403)
   })
 })

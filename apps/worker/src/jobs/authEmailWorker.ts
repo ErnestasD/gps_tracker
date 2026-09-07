@@ -4,6 +4,7 @@ import type { Pool } from 'pg'
 import { absolutizeBrandAssets, brandingReadSchema, whiteLabelFromPlan, type Branding } from '@orbetra/shared'
 
 import type { EmailTransport } from '../notify/drivers.js'
+import { sendingAddress } from '../notify/senderAddress.js'
 import { primaryDomain } from '../notify/tenantOrigin.js'
 import { renderResetEmail } from '../notify/passwordResetEmail.js'
 import { renderSignupExistsEmail } from '../notify/signupExistsEmail.js'
@@ -231,6 +232,9 @@ export async function sendAuthEmail(deps: Pick<AuthEmailWorkerDeps, 'pool' | 'tr
     // reseller's mail. `ownName` and not `brand`: `brand` falls back to the platform name, which is
     // right inside a message we own and wrong as the sender of a reseller's.
     fromName: whiteLabel ? ownName : undefined,
+    // …and the address beside it, once they have proved a sending domain (ADR-036). Same gate as the
+    // name: a Direct customer bought OUR product, so our identity is the correct one for them.
+    fromAddress: whiteLabel ? (await sendingAddress(deps.pool, tenantId)) ?? undefined : undefined,
   })
   return true
 }

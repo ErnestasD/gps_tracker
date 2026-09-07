@@ -1,8 +1,24 @@
 # ADR-036 — A white-label tenant sends mail from their OWN domain
 
-Status: **proposed** (2026-08-07) — decided, NOT yet implemented. No `sesv2` code exists; mail is
-still sent from the platform identity with `Reply-To` set to the tenant's support address.
-Supersedes nothing. Related: E03-5 (custom domains), ADR-023 (SMTP transport), ROADMAP-post-v1 item 13.
+Status: **accepted** (2026-08-07) — **implemented 2026-09-07**, as decided below and with no
+deviation. `tenant_sending_domains` holds one identity per tenant, four routes on the branding screen
+create and verify it, and the three tenant-facing send paths (alerts, scheduled reports, auth mail)
+carry the address. Supersedes nothing. Related: E03-5 (custom domains), ADR-023 (SMTP transport),
+ROADMAP-post-v1 item 13, audit W-3.
+
+**It ships INERT.** The IAM user this needs does not exist yet, so `sesIdentityConfigFromEnv()`
+answers null on every current deployment: the routes 503 and the settings card says the feature is
+unavailable. Nothing about any tenant's existing mail changes until `AWS_REGION`,
+`SES_ADMIN_ACCESS_KEY_ID` and `SES_ADMIN_SECRET_ACCESS_KEY` are set — see the README env table. That
+was a design goal rather than a compromise: the SMS gateway shipped the same way (ADR-032), and the
+alternative is a feature nobody can review until a credential arrives.
+
+**One thing deliberately NOT built.** Per-tenant SMTP credentials, which this ADR rejects below. The
+founder later answered "both, DKIM default" when the white-label plan options were put to them; that
+answer predates re-reading the reasoning here — support blindness when the tenant's own provider
+throttles, and holding a live third-party credential for as long as the customer exists. DKIM is the
+default under either answer, so nothing shipped depends on resolving it, but BYO SMTP should not be
+built on the strength of a multiple-choice answer without that trade-off in view. Ask first.
 
 ## The problem
 

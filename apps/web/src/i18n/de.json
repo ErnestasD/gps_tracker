@@ -314,7 +314,8 @@
       "document": "Dokument",
       "maintenancePlan": "Wartungsplan",
       "branding_asset": "Markenbild",
-      "deal_registration": "Deal-Registrierung"
+      "deal_registration": "Deal-Registrierung",
+      "sendingDomain": "Absenderdomain"
     },
     "a": {
       "create": "Erstellt",
@@ -2055,6 +2056,29 @@
       "support_email": "Support-Adresse hinzufügen — dorthin gelangen Kunden beim Antworten",
       "colors": "Primärfarbe wählen",
       "own_domain": "Auf Ihre eigene Domain wechseln — auf unserer sehen Ihre Kunden unseren Hostnamen"
+    }
+  },
+  "sending": {
+    "title": "E-Mails von Ihrer eigenen Adresse senden",
+    "desc": "Benachrichtigungen und Konto-E-Mails gehen von uns raus, bis Sie eine eigene Domain bestätigen. Alles im Inneren der Nachricht ist bereits Ihres; hier geht es um die Absenderzeile.",
+    "unavailable": "In dieser Installation noch nicht verfügbar. Ihre E-Mails werden weiterhin zugestellt, und nichts an Ihrer Einrichtung ändert sich.",
+    "mailboxLabel": "Postfachname",
+    "domainLabel": "Ihre Domain",
+    "add": "Absenderdomain festlegen",
+    "verify": "Bestätigung prüfen",
+    "remove": "Entfernen",
+    "copied": "Kopiert",
+    "recordType": "Typ",
+    "recordName": "Name / Host",
+    "recordValue": "Wert / Ziel",
+    "pendingNote": "Tragen Sie diese drei Einträge in Ihr DNS ein und klicken Sie auf Prüfen. Bis zur Bestätigung gehen Ihre E-Mails weiter von unserer Adresse raus — nichts bleibt liegen.",
+    "slowNote": "Die Bestätigung kann nach dem Veröffentlichen der Einträge bis zu einer Stunde dauern. Das ist der langsamste Schritt der gesamten Einrichtung.",
+    "badDomain": "Diese Domain oder dieser Postfachname ist ungültig.",
+    "upstreamError": "Wir konnten unseren Mail-Anbieter nicht erreichen. Das liegt an uns — bitte gleich noch einmal versuchen.",
+    "status": {
+      "pending": "Warten auf DNS",
+      "verified": "Bestätigt",
+      "failed": "Nicht bestätigt"
     }
   }
 }

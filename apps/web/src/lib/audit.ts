@@ -35,6 +35,7 @@ export interface AuditFilters {
 export const AUDIT_ENTITIES = [
   'account', 'accountPrefs', 'user', 'device', 'rule', 'webhook', 'domain', 'branding', 'branding_asset', 'tenant',
   'geofence', 'trip', 'apiKey', 'command', 'driver', 'export', 'maintenance', 'maintenancePlan', 'serviceLog', 'document', 'scheduledReport', 'shareLink',
+  'sendingDomain',
 ] as const
 export const AUDIT_ACTIONS = ['create', 'update', 'delete'] as const
 
