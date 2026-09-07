@@ -4,6 +4,8 @@ import { Activity, AlertOctagon, TrendingUp } from 'lucide-react'
 import { useMemo, Fragment, useState, useSyncExternalStore } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { KB } from '@orbetra/kb'
+
 import { AdminButton, Badge, PageHeader, StatCard } from '@/components/admin/AdminKit'
 import { Combobox } from '@/components/admin/Combobox'
 import { DatePicker } from '@/components/admin/DatePicker'
@@ -97,7 +99,7 @@ export function EventsPage() {
     <div className="w-full space-y-4 p-4 md:p-6">
       {/* labeled filters with the shared gap — the bare glued controls read as off-standard
           next to trips/reports (founder feedback); FilterLabel mirrors trips.tsx */}
-      <PageHeader title={t('events.title')} description={t('events.desc')} className="mb-0">
+      <PageHeader title={t('events.title')} description={t('events.desc')} help={KB.eventTypes} className="mb-0">
         <FilterLabel label={t('events.kind')}>
           <div className="w-40">
             <Combobox aria-label={t('events.kind')} value={kind} onChange={setKind} data-testid="events-kind"

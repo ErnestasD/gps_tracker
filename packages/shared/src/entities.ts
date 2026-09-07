@@ -605,15 +605,26 @@ export interface ScheduledReportView {
 export const webhookEventKindSchema = ruleKindSchema
 export const WEBHOOK_EVENT_KINDS = ruleKindSchema.options
 
+/**
+ * A webhook endpoint, pinned to `https://`.
+ *
+ * The payload is signed, but a signature only proves who sent it — over plain HTTP the positions,
+ * plates and panic events inside it are readable by every hop on the path, and the signing secret
+ * the customer copied is protecting a message anyone can already read. The field used to accept
+ * `http://`, and the help article told readers it did not (KB audit 2026-09-07); pinning it here
+ * makes the documented behaviour the real one.
+ */
+const webhookUrl = z.string().url().startsWith('https://', 'must be an https:// URL').max(2048)
+
 export const webhookCreateSchema = z.object({
   accountId: z.string().uuid().nullable(),
-  url: z.string().url().max(2048),
+  url: webhookUrl,
   secret: z.string().min(16).max(256),
   events: z.array(webhookEventKindSchema).optional(),
   enabled: z.boolean().optional(),
 })
 export const webhookUpdateSchema = z
-  .object({ url: z.string().url().max(2048), events: z.array(webhookEventKindSchema), enabled: z.boolean() })
+  .object({ url: webhookUrl, events: z.array(webhookEventKindSchema), enabled: z.boolean() })
   .partial()
 
 // ── tenants (platform) ───────────────────────────────────────────────────────

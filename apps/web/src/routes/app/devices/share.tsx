@@ -2,6 +2,9 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { KB } from '@orbetra/kb'
+
+import { HelpLink } from '@/components/kb/HelpLink'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -73,7 +76,10 @@ export function ShareCard({ device }: { device: Device }) {
   return (
     <Card data-testid={`share-card-${device.imei}`}>
       <CardHeader>
-        <CardTitle className="text-base">{t('devices.share.title', { name: device.name })}</CardTitle>
+        <div className="flex items-center gap-1.5">
+          <CardTitle className="text-base">{t('devices.share.title', { name: device.name })}</CardTitle>
+          <HelpLink slug={KB.shareALiveLink} testId="help-share-link" />
+        </div>
       </CardHeader>
       <CardContent className="space-y-4">
         <p className="text-sm text-muted">{t('devices.share.blurb')}</p>

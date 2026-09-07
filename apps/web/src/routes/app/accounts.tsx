@@ -3,6 +3,9 @@ import { MoreHorizontal, Plus, UserPlus } from 'lucide-react'
 import { useState, type FormEvent, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { KB, type KbSlug } from '@orbetra/kb'
+
+import { HelpLink } from '@/components/kb/HelpLink'
 import { AdminButton, AdminInput, Badge as AdminBadge, PageHeader } from '@/components/admin/AdminKit'
 import { Combobox } from '@/components/admin/Combobox'
 import { ConfirmDialog } from '@/components/admin/ConfirmDialog'
@@ -140,7 +143,7 @@ export function AccountsPage() {
 
   return (
     <div className="w-full space-y-6 p-4 md:p-6">
-      <PageHeader className="mb-0" title={t('accounts.title')} description={t('accounts.desc')}>
+      <PageHeader className="mb-0" title={t('accounts.title')} description={t('accounts.desc')} help={KB.customerAccounts}>
         {canWrite && (
           <Sheet
             open={formOpen}
@@ -353,10 +356,13 @@ function AccountRowMenu({ account, onEdit, onAddUser, onDelete }: { account: Acc
   )
 }
 
-function FieldLabel({ label, children }: { label: string; children: ReactNode }) {
+function FieldLabel({ label, help, helpTestId, children }: { label: string; help?: KbSlug; helpTestId?: string; children: ReactNode }) {
   return (
     <label className="flex flex-col gap-1 text-xs font-medium" style={{ color: 'var(--admin-ink-soft)' }}>
-      {label}
+      <span className="inline-flex items-center gap-1">
+        {label}
+        {help !== undefined && <HelpLink slug={help} {...(helpTestId !== undefined ? { testId: helpTestId } : {})} />}
+      </span>
       {children}
     </label>
   )
@@ -452,7 +458,7 @@ function UserForm({ accounts, initialAccountId, onDone, onCancel }: {
         <AdminInput type="password" value={password} onChange={(e) => setPassword(e.target.value)} maxLength={200} data-testid="account-user-password" />
       </FieldLabel>
       <p className="text-xs" style={{ color: 'var(--admin-ink-soft)' }}>{t('accounts.passwordHint')}</p>
-      <FieldLabel label={t('accounts.role')}>
+      <FieldLabel label={t('accounts.role')} help={KB.loginsAndRoles} helpTestId="help-account-role">
         <Combobox
           value={role}
           onChange={(v) => setRole(v === 'viewer' ? 'viewer' : 'account_manager')}

@@ -93,7 +93,9 @@
     "paletteEmpty": "Nieko nerasta",
     "paletteSearch": "Ieškoti puslapio, įrenginio, vairuotojo, įvykio…",
     "paletteNoMatch": "Nieko nerasta pagal „{{q}}“",
-    "console": "Platformos pultas"
+    "console": "Platformos pultas",
+    "support": "Pagalba",
+    "help": "Žinių bazė"
   },
   "routing": {
     "title": "Maršrutų planuoklė",

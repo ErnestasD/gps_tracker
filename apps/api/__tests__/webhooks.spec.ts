@@ -102,6 +102,18 @@ describe('E06-4 webhooks CRUD', () => {
     expect((await req('/v1/webhooks', t1Admin, 'POST', { accountId: acct1, url: 'https://hooks.example.com/x', secret: 'short' })).status).toBe(400)
   })
 
+  /**
+   * A signature proves who sent the payload; it does not hide it. Over plain HTTP the positions,
+   * plates and panic events inside are readable by every hop on the path, so the URL is pinned to
+   * https at the schema — on create AND on update, since an endpoint edited down to http later
+   * would be just as exposed.
+   */
+  it('an http:// endpoint is refused, on create and on update', async () => {
+    expect((await req('/v1/webhooks', t1Admin, 'POST', { accountId: acct1, url: 'http://hooks.example.com/plain', secret: SECRET })).status).toBe(400)
+    const wh = (await (await req('/v1/webhooks', t1Admin, 'POST', { accountId: acct1, url: 'https://hooks.example.com/pin', secret: SECRET })).json()) as { id: string }
+    expect((await req(`/v1/webhooks/${wh.id}`, t1Admin, 'PATCH', { url: 'http://hooks.example.com/plain' })).status).toBe(400)
+  })
+
   it('toggle enabled off via PATCH, then delete → 404 on re-fetch', async () => {
     const wh = (await (await req('/v1/webhooks', t1Admin, 'POST', { accountId: acct1, url: 'https://hooks.example.com/toggle', secret: SECRET })).json()) as { id: string }
     expect((await (await req(`/v1/webhooks/${wh.id}`, t1Admin, 'PATCH', { enabled: false })).json() as { enabled: boolean }).enabled).toBe(false)

@@ -5,6 +5,9 @@ import { useTranslation } from 'react-i18next'
 
 import type { AccountPreferences } from '@orbetra/shared'
 
+import { KB } from '@orbetra/kb'
+
+import { HelpLink } from '@/components/kb/HelpLink'
 import { AdminButton, Badge, AdminInput, PageHeader } from '@/components/admin/AdminKit'
 import { Combobox } from '@/components/admin/Combobox'
 import { changePassword } from '@/lib/api'
@@ -362,8 +365,9 @@ function AccountDefaultsSection() {
 
   return (
     <div className="admin-hairline-t space-y-3 pt-4" data-testid="account-tz">
-      <div className="text-sm font-semibold" style={{ color: 'var(--admin-ink)' }}>
+      <div className="flex items-center gap-1.5 text-sm font-semibold" style={{ color: 'var(--admin-ink)' }}>
         {t('settings.accountTz.title')}
+        <HelpLink slug={KB.timeZonesAndUnits} anchor="account" testId="help-account-tz" />
       </div>
       <p className="text-xs" style={{ color: 'var(--admin-ink-soft)' }}>{t('settings.accountTz.hint')}</p>
       <div className="space-y-3 text-sm">
@@ -442,8 +446,9 @@ function DisplayPrefsSection() {
 
   return (
     <div className="admin-hairline-t space-y-4 pt-4">
-      <div className="text-sm font-semibold" style={{ color: 'var(--admin-ink)' }} data-testid="display-prefs">
+      <div className="flex items-center gap-1.5 text-sm font-semibold" style={{ color: 'var(--admin-ink)' }} data-testid="display-prefs">
         {t('settings.display.title')}
+        <HelpLink slug={KB.timeZonesAndUnits} anchor="display" testId="help-display-prefs" />
       </div>
       <p className="text-xs" style={{ color: 'var(--admin-ink-soft)' }}>{t('settings.display.browserNote')}</p>
       {row(t('settings.display.timeFormat'), 'pref-timeformat', prefs.timeFormat, set('timeFormat'), [
@@ -522,8 +527,9 @@ function PushSection() {
 
   return (
     <div className="admin-card" data-testid="push-section">
-      <div className="admin-hairline-b px-4 py-3 text-sm font-semibold" style={{ color: 'var(--admin-ink)' }}>
+      <div className="admin-hairline-b flex items-center gap-1.5 px-4 py-3 text-sm font-semibold" style={{ color: 'var(--admin-ink)' }}>
         {t('settings.push.title')}
+        <HelpLink slug={KB.notificationChannels} anchor="channels" />
       </div>
       <div className="space-y-3 p-4">
         <p className="text-xs" style={{ color: 'var(--admin-ink-soft)' }}>{t('settings.push.hint')}</p>
@@ -577,8 +583,9 @@ function ExportSection() {
 
   return (
     <div className="admin-card" data-testid="export-section">
-      <div className="admin-hairline-b px-4 py-3 text-sm font-semibold" style={{ color: 'var(--admin-ink)' }}>
+      <div className="admin-hairline-b flex items-center gap-1.5 px-4 py-3 text-sm font-semibold" style={{ color: 'var(--admin-ink)' }}>
         {t('settings.export.title')}
+        <HelpLink slug={KB.exportAndEraseData} anchor="export" />
       </div>
       <div className="space-y-3 p-4">
         <p className="text-xs" style={{ color: 'var(--admin-ink-soft)' }}>{t('settings.export.hint')}</p>

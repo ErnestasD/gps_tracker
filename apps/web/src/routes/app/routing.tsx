@@ -3,6 +3,8 @@ import type { GeoJSONSource, Map as MbMap } from 'mapbox-gl'
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { KB } from '@orbetra/kb'
+
 import { AdminButton, AdminCheckbox, PageHeader } from '@/components/admin/AdminKit'
 import { MapErrorOverlay } from '@/components/MapErrorOverlay'
 import { ApiError } from '@/lib/http'
@@ -134,7 +136,7 @@ export function RoutePlannerPage() {
 
   return (
     <div className="flex h-full flex-col gap-3 p-4 md:p-6">
-      <PageHeader title={t('routing.title')} description={t('routing.desc')} className="mb-0" />
+      <PageHeader title={t('routing.title')} description={t('routing.desc')} help={KB.routePlanner} className="mb-0" />
 
       <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 lg:grid-cols-[minmax(0,26rem)_1fr]">
         {/* planner panel */}

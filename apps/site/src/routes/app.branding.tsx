@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import * as React from "react";
 import { useTranslation } from "react-i18next";
 import { ArrowUpRight, Check, Copy, Info, Loader2 } from "lucide-react";
+import { KB } from "@orbetra/kb";
 import { contentFor } from "@/lib/demo-content";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { AdminButton, AdminInput, AdminLabel, Badge, PageHeader } from "@/components/admin/AdminKit";
@@ -55,7 +56,7 @@ function BrandingPage() {
       <PageHeader
         className="mb-0"
         title={t("branding.title")}
-        description={t("branding.desc")}
+        description={t("branding.desc")} help={KB.branding}
       />
 
       <div className="admin-card p-5">

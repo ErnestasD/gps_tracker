@@ -6,7 +6,7 @@ import {
   LayoutDashboard, Map, Car, Users, Wrench, Route, History,
   Hexagon, ListChecks, Bell, BarChart3, Terminal, Waypoints,
   Palette, CreditCard, KeyRound, Webhook, ScrollText, Settings,
-  Circle, ChevronsLeft, ChevronsRight,
+  Circle, ChevronsLeft, ChevronsRight, BookOpen,
 } from "lucide-react";
 
 type NavItem = { to: string; label: string; icon: (props: { className?: string; strokeWidth?: number }) => React.ReactNode };
@@ -58,6 +58,12 @@ const groups: NavGroup[] = [
       { to: "/app/audit", label: "shell.audit", icon: ScrollText },
       { to: "/app/settings", label: "shell.settings", icon: Settings },
     ],
+  },
+  // The real product carries the knowledge base here, on its own domain. The demo has no dashboard
+  // of its own to render it in, so this one entry leaves for the public copy — same articles.
+  {
+    label: "shell.support",
+    items: [{ to: "/learn", label: "shell.help", icon: BookOpen }],
   },
 ];
 

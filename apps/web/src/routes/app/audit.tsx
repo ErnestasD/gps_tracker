@@ -2,6 +2,8 @@ import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import { Fragment, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { KB } from '@orbetra/kb'
+
 import { AdminButton, Badge, PageHeader } from '@/components/admin/AdminKit'
 import { Combobox } from '@/components/admin/Combobox'
 import { listUsers } from '@/lib/accounts'
@@ -89,7 +91,7 @@ export function AuditPage() {
 
   return (
     <div className="w-full space-y-4 p-4 md:p-6">
-      <PageHeader className="mb-0" title={t('audit.title')} description={t('audit.desc')}>
+      <PageHeader className="mb-0" title={t('audit.title')} description={t('audit.desc')} help={KB.auditLog}>
         <div className="w-44">
           <Combobox aria-label={t('audit.entity')} value={entity} onChange={setEntity} data-testid="audit-entity"
             options={[{ value: '', label: t('audit.allEntities') }, ...AUDIT_ENTITIES.map((e) => ({ value: e, label: t(`audit.e.${e}`) }))]} />

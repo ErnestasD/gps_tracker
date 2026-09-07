@@ -26,10 +26,12 @@ import { Route as CookiesRouteImport } from './routes/cookies'
 import { Route as CompatibilityRouteImport } from './routes/compatibility'
 import { Route as AppRouteImport } from './routes/app'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as LearnIndexRouteImport } from './routes/learn.index'
 import { Route as AppIndexRouteImport } from './routes/app.index'
 import { Route as PartnerSetPasswordRouteImport } from './routes/partner.set-password'
 import { Route as PartnerLoginRouteImport } from './routes/partner.login'
 import { Route as PartnerDashboardRouteImport } from './routes/partner.dashboard'
+import { Route as LearnSlugRouteImport } from './routes/learn.$slug'
 import { Route as AppWebhooksRouteImport } from './routes/app.webhooks'
 import { Route as AppTripsRouteImport } from './routes/app.trips'
 import { Route as AppSettingsRouteImport } from './routes/app.settings'
@@ -135,6 +137,11 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const LearnIndexRoute = LearnIndexRouteImport.update({
+  id: '/learn/',
+  path: '/learn/',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AppIndexRoute = AppIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -153,6 +160,11 @@ const PartnerLoginRoute = PartnerLoginRouteImport.update({
 const PartnerDashboardRoute = PartnerDashboardRouteImport.update({
   id: '/partner/dashboard',
   path: '/partner/dashboard',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LearnSlugRoute = LearnSlugRouteImport.update({
+  id: '/learn/$slug',
+  path: '/learn/$slug',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AppWebhooksRoute = AppWebhooksRouteImport.update({
@@ -288,10 +300,12 @@ export interface FileRoutesByFullPath {
   '/app/settings': typeof AppSettingsRoute
   '/app/trips': typeof AppTripsRoute
   '/app/webhooks': typeof AppWebhooksRoute
+  '/learn/$slug': typeof LearnSlugRoute
   '/partner/dashboard': typeof PartnerDashboardRoute
   '/partner/login': typeof PartnerLoginRoute
   '/partner/set-password': typeof PartnerSetPasswordRoute
   '/app/': typeof AppIndexRoute
+  '/learn/': typeof LearnIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -329,10 +343,12 @@ export interface FileRoutesByTo {
   '/app/settings': typeof AppSettingsRoute
   '/app/trips': typeof AppTripsRoute
   '/app/webhooks': typeof AppWebhooksRoute
+  '/learn/$slug': typeof LearnSlugRoute
   '/partner/dashboard': typeof PartnerDashboardRoute
   '/partner/login': typeof PartnerLoginRoute
   '/partner/set-password': typeof PartnerSetPasswordRoute
   '/app': typeof AppIndexRoute
+  '/learn': typeof LearnIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -372,10 +388,12 @@ export interface FileRoutesById {
   '/app/settings': typeof AppSettingsRoute
   '/app/trips': typeof AppTripsRoute
   '/app/webhooks': typeof AppWebhooksRoute
+  '/learn/$slug': typeof LearnSlugRoute
   '/partner/dashboard': typeof PartnerDashboardRoute
   '/partner/login': typeof PartnerLoginRoute
   '/partner/set-password': typeof PartnerSetPasswordRoute
   '/app/': typeof AppIndexRoute
+  '/learn/': typeof LearnIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -416,10 +434,12 @@ export interface FileRouteTypes {
     | '/app/settings'
     | '/app/trips'
     | '/app/webhooks'
+    | '/learn/$slug'
     | '/partner/dashboard'
     | '/partner/login'
     | '/partner/set-password'
     | '/app/'
+    | '/learn/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -457,10 +477,12 @@ export interface FileRouteTypes {
     | '/app/settings'
     | '/app/trips'
     | '/app/webhooks'
+    | '/learn/$slug'
     | '/partner/dashboard'
     | '/partner/login'
     | '/partner/set-password'
     | '/app'
+    | '/learn'
   id:
     | '__root__'
     | '/'
@@ -499,10 +521,12 @@ export interface FileRouteTypes {
     | '/app/settings'
     | '/app/trips'
     | '/app/webhooks'
+    | '/learn/$slug'
     | '/partner/dashboard'
     | '/partner/login'
     | '/partner/set-password'
     | '/app/'
+    | '/learn/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -523,9 +547,11 @@ export interface RootRouteChildren {
   SubprocessorsRoute: typeof SubprocessorsRoute
   TermsRoute: typeof TermsRoute
   TspRoute: typeof TspRoute
+  LearnSlugRoute: typeof LearnSlugRoute
   PartnerDashboardRoute: typeof PartnerDashboardRoute
   PartnerLoginRoute: typeof PartnerLoginRoute
   PartnerSetPasswordRoute: typeof PartnerSetPasswordRoute
+  LearnIndexRoute: typeof LearnIndexRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -649,6 +675,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/learn/': {
+      id: '/learn/'
+      path: '/learn'
+      fullPath: '/learn/'
+      preLoaderRoute: typeof LearnIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/app/': {
       id: '/app/'
       path: '/'
@@ -675,6 +708,13 @@ declare module '@tanstack/react-router' {
       path: '/partner/dashboard'
       fullPath: '/partner/dashboard'
       preLoaderRoute: typeof PartnerDashboardRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/learn/$slug': {
+      id: '/learn/$slug'
+      path: '/learn/$slug'
+      fullPath: '/learn/$slug'
+      preLoaderRoute: typeof LearnSlugRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/app/webhooks': {
@@ -879,9 +919,11 @@ const rootRouteChildren: RootRouteChildren = {
   SubprocessorsRoute: SubprocessorsRoute,
   TermsRoute: TermsRoute,
   TspRoute: TspRoute,
+  LearnSlugRoute: LearnSlugRoute,
   PartnerDashboardRoute: PartnerDashboardRoute,
   PartnerLoginRoute: PartnerLoginRoute,
   PartnerSetPasswordRoute: PartnerSetPasswordRoute,
+  LearnIndexRoute: LearnIndexRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

@@ -3,9 +3,20 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Orbetra — GPS tracking for small fleets</title>
-    <meta name="description" content="Simple, EU-hosted GPS tracking for small fleets and owner-operators (1–20 vehicles). Live map, trip history, alerts. Setup in an afternoon." />
-    <meta name="author" content="Orbetra" />
+    <!--
+      NO static <title> and no static description, deliberately — but the og: pair stays.
+
+      The router owns the head (`HeadContent` in __root, plus a `head` on every route) and APPENDS
+      its tags; the browser, and every consumer of a duplicated tag, takes the FIRST one. A static
+      <title> therefore won that race on every page: /docs, /pricing, /compatibility and every
+      knowledge-base article all showed the home page's title in the tab and in search results. The
+      root route declares the same defaults, so a route without its own title still gets that one.
+
+      The og: tags are the opposite case and stay put. Link unfurlers (Slack, LinkedIn, WhatsApp)
+      generally do NOT run JavaScript, so for them the router's head does not exist at all — remove
+      these and a shared link previews as nothing. They are the home page's, which is what every
+      shared link already previewed as before this change: no gain, but no regression either.
+    -->
     <meta property="og:title" content="Orbetra — GPS tracking for small fleets" />
     <meta property="og:description" content="Simple GPS tracking for small fleets. Live map, alerts, reports. Setup in an afternoon. Flat per-vehicle pricing." />
     <meta property="og:type" content="website" />

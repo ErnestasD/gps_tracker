@@ -5,6 +5,8 @@ import { SectionHeading } from "@/components/site/SectionHeading";
 import { VerticalsGrid } from "@/components/site/VerticalsGrid";
 import { CodeCard } from "@/components/site/CodeCard";
 import { HeroDeck } from "@/components/site/HeroDeck";
+import { KB, KB_META, metaBySlug } from "@orbetra/kb";
+import { useActiveLang } from "@/components/site/LegalContent";
 
 /** Prices are interpolated so the copy stays in one place per language. */
 const DIRECT_FROM_PRICE = 9;
@@ -33,6 +35,8 @@ function HomePage() {
       <Section id="verticals" label={t("home.verticals.label")} heading={<>{t("home.verticals.h1")}<br /><span className="text-gradient">{t("home.verticals.h2")}</span></>}>
         <VerticalsGrid />
       </Section>
+
+      <LearnBand />
 
       <Section id="api" label={t("home.api.label")} heading={<>{t("home.api.h1")}<br /><span className="text-gradient">{t("home.api.h2")}</span></>}>
         <div className="grid gap-10 lg:grid-cols-[1.2fr_1fr] items-center">
@@ -144,6 +148,67 @@ function TrustStrip() {
               </div>
             </div>
           ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/**
+ * The knowledge base, on the front page.
+ *
+ * It sits here because the objection this product actually meets is not price — it is "I do not
+ * understand any of this". Fifty articles that answer that, free and without an account, are a
+ * better argument than another feature list, and a visitor who reads one arrives at the signup
+ * already knowing what a geofence is.
+ */
+function LearnBand() {
+  const { t } = useTranslation();
+  const lang = useActiveLang();
+  // METADATA only. Importing the articles here would put the whole knowledge base — every word, in
+  // four languages — into the home page's bundle, for four card titles.
+  const picks = [
+    KB.howTrackingWorks,
+    KB.simAndApn,
+    KB.deviceNotReporting,
+    KB.geofences,
+    KB.distanceAndOdometer,
+    KB.trackingEmployeesLawfully,
+  ]
+    .map((slug) => metaBySlug(slug))
+    .filter((a): a is NonNullable<typeof a> => a !== undefined);
+
+  return (
+    <section id="learn" className="relative py-24 md:py-32 px-6">
+      <div className="mx-auto max-w-7xl">
+        <div className="grid gap-10 lg:grid-cols-[1fr_1.1fr] lg:items-start">
+          <div>
+            <SectionHeading label={t("homeLearn.label")} className="mb-6 max-w-xl">
+              {t("homeLearn.h1")}<br /><span className="text-gradient">{t("homeLearn.h2")}</span>
+            </SectionHeading>
+            {/* the count comes from the articles themselves — a hardcoded number in marketing copy
+                is a lie the moment somebody writes the next one */}
+            <p className="text-muted-foreground text-lg">{t("homeLearn.body", { count: KB_META.length })}</p>
+            <Link to="/learn" className="pill-primary hover:pill-primary-hover mt-8 inline-flex items-center gap-2">
+              {t("homeLearn.cta")} <ArrowRight className="h-4 w-4" aria-hidden />
+            </Link>
+          </div>
+          {/* a table of contents rather than a feature grid: the point is the breadth, and the
+              titles are the honest advertisement for it */}
+          <ul className="grid gap-2 sm:grid-cols-2">
+            {picks.map((a) => (
+              <li key={a.slug}>
+                <Link
+                  to="/learn/$slug"
+                  params={{ slug: a.slug }}
+                  className="surface-card surface-card-hover group flex h-full items-center gap-2 px-4 py-3.5 text-sm font-medium text-ink"
+                >
+                  <span className="min-w-0">{a.title[lang]}</span>
+                  <ArrowRight className="ml-auto h-3.5 w-3.5 shrink-0 opacity-0 transition-opacity group-hover:opacity-70" aria-hidden />
+                </Link>
+              </li>
+            ))}
+          </ul>
         </div>
       </div>
     </section>

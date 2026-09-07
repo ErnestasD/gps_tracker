@@ -1,2 +1,7 @@
 User-agent: *
 Allow: /
+
+# The sitemap is generated at build (see vite.config.ts) and carries every knowledge-base article,
+# which is the half of this site with fifty distinct pages worth finding. Naming it here is what
+# makes a crawler look for it rather than hoping to reach every article by following links.
+Sitemap: https://orbetra.com/sitemap.xml

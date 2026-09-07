@@ -5,6 +5,8 @@ import type { GeoJSONSource, Map as MbMap } from 'mapbox-gl'
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { KB } from '@orbetra/kb'
+
 import { AdminButton, AdminInput, AdminLabel, AdminRadio, Badge, PageHeader } from '@/components/admin/AdminKit'
 import { ConfirmDialog } from '@/components/admin/ConfirmDialog'
 import { OverviewNotice } from '@/components/admin/OverviewNotice'
@@ -649,7 +651,7 @@ export function GeofencesPage() {
 
   return (
     <div className="flex h-full flex-col gap-3 p-4 md:p-6">
-      <PageHeader title={t('geofences.title')} description={t('geofences.desc')} className="mb-0">
+      <PageHeader title={t('geofences.title')} description={t('geofences.desc')} help={KB.geofences} className="mb-0">
         {canWrite && (drafting ? (
           <>
             {/* draft header (reference): Cancel + Save; the form lives in the aside DraftPanel */}

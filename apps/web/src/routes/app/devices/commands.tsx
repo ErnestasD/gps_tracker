@@ -2,6 +2,9 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { KB } from '@orbetra/kb'
+
+import { HelpLink } from '@/components/kb/HelpLink'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
@@ -130,7 +133,10 @@ export function CommandsCard({ device }: { device: Device }) {
   return (
     <Card data-testid="commands-card">
       <CardHeader>
-        <CardTitle className="text-base">{t('devices.cmd.title', { name: device.name })}</CardTitle>
+        <div className="flex items-center gap-1.5">
+          <CardTitle className="text-base">{t('devices.cmd.title', { name: device.name })}</CardTitle>
+          <HelpLink slug={KB.commands} testId="help-device-commands" />
+        </div>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="flex flex-wrap gap-2">

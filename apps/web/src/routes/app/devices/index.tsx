@@ -4,6 +4,9 @@ import { MoreHorizontal, Plus, Upload } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { KB } from '@orbetra/kb'
+
+import { HelpLink } from '@/components/kb/HelpLink'
 import { AdminButton, AdminInput, Badge, PageHeader } from '@/components/admin/AdminKit'
 import { Combobox } from '@/components/admin/Combobox'
 import { ConfirmDialog } from '@/components/admin/ConfirmDialog'
@@ -29,6 +32,7 @@ import { OnboardingCard } from '@/routes/app/devices/onboarding'
 import { SettingsCard } from '@/routes/app/devices/settings'
 import { QuarantineSection } from '@/routes/app/devices/quarantine'
 import {
+
   createDevice,
   isVirtualImei,
   importApply,
@@ -239,10 +243,15 @@ export function DevicesPage() {
         const st = statusOf(r, everSeen)
         const tone = st === 'active' ? 'success' : st === 'waiting' ? 'warning' : 'neutral'
         return (
-          <Badge tone={tone} title={st === 'waiting' ? t('devices.waitingHint') : undefined}>
-            <span className="h-1.5 w-1.5 rounded-full" style={{ background: 'currentColor' }} aria-hidden />
-            {t(`devices.${st}`)}
-          </Badge>
+          <span className="inline-flex items-center gap-1">
+            <Badge tone={tone} title={st === 'waiting' ? t('devices.waitingHint') : undefined}>
+              <span className="h-1.5 w-1.5 rounded-full" style={{ background: 'currentColor' }} aria-hidden />
+              {t(`devices.${st}`)}
+            </Badge>
+            {/* "Never reported" is the one status a reader cannot act on without knowing what to
+                check — and the checklist is ordered by which cause it usually turns out to be. */}
+            {st === 'waiting' && <HelpLink slug={KB.deviceNotReporting} anchor="never" testId={`help-waiting-${r.imei}`} />}
+          </span>
         )
       },
     },
@@ -254,7 +263,7 @@ export function DevicesPage() {
 
   return (
     <div className="w-full space-y-4 p-4 md:p-6">
-      <PageHeader className="mb-2" title={t('devices.title')} description={t('devices.desc')}>
+      <PageHeader className="mb-2" title={t('devices.title')} description={t('devices.desc')} help={KB.connectATracker}>
         {canWrite && (<>
         <Sheet open={importOpen} onOpenChange={setImportOpen}>
           <SheetTrigger asChild>

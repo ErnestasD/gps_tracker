@@ -95,7 +95,7 @@ export const privacy: LocalizedDoc = {
         "h2": "8. Hosting and international transfers"
       },
       {
-        "p": "Orbetra runs on infrastructure physically located in the European Union (Hetzner, Germany). Geocoding (Photon) and routing (OSRM) are self-hosted by us in the EU. Billing runs through Stripe Payments Europe in Ireland, transactional email through Postmark's EU endpoint, and DNS, TLS and DDoS protection through Cloudflare with EU-first routing."
+        "p": "Orbetra runs on infrastructure physically located in the European Union (Hetzner, Germany). Geocoding (Photon) and routing (OSRM) are self-hosted by us in the EU. Billing runs through Stripe Payments Europe in Ireland, transactional email through Amazon SES in Frankfurt, and DNS, TLS and DDoS protection through Cloudflare with EU-first routing. The configuration SMS sent to a device SIM during onboarding goes through Twilio."
       },
       {
         "p": "Two components involve providers outside the EEA. Map tiles in the product are served by Mapbox (United States), which receives request metadata such as IP address and the map area requested. The basemap on this marketing site is served by CARTO, again request metadata only and no customer data. Those transfers rely on the EU Standard Contractual Clauses (Commission Implementing Decision (EU) 2021/914) together with a transfer assessment and supplementary measures. Fleet telemetry and account data stay in the EU."
@@ -246,7 +246,7 @@ export const privacy: LocalizedDoc = {
         "h2": "8. Priegloba ir tarptautiniai duomenų perdavimai"
       },
       {
-        "p": "Orbetra veikia infrastruktūroje, fiziškai esančioje Europos Sąjungoje (Hetzner, Vokietija). Geokodavimo (Photon) ir maršrutų sudarymo (OSRM) paslaugas ES teritorijoje talpiname patys. Atsiskaitymai vykdomi per Stripe Payments Europe Airijoje, sisteminiai el. laiškai — per Postmark ES galinį tašką, o DNS, TLS ir DDoS apsauga — per Cloudflare, pirmenybę teikiant ES maršrutams."
+        "p": "Orbetra veikia infrastruktūroje, fiziškai esančioje Europos Sąjungoje (Hetzner, Vokietija). Geokodavimo (Photon) ir maršrutų sudarymo (OSRM) paslaugas ES teritorijoje talpiname patys. Atsiskaitymai vykdomi per Stripe Payments Europe Airijoje, sisteminiai el. laiškai — per Amazon SES Frankfurte, o DNS, TLS ir DDoS apsauga — per Cloudflare, pirmenybę teikiant ES maršrutams. Konfigūracijos SMS, siunčiama į įrenginio SIM diegimo metu, keliauja per Twilio."
       },
       {
         "p": "Du komponentai apima teikėjus už EEE ribų. Produkte naudojamas žemėlapio išklotines (tiles) teikia Mapbox (Jungtinės Valstijos), gaunantis užklausų metaduomenis — IP adresą ir prašomą žemėlapio sritį. Šios rinkodaros svetainės pagrindinį žemėlapį teikia CARTO — vėlgi tik užklausų metaduomenys ir jokių klientų duomenų. Šie perdavimai grindžiami ES standartinėmis sutarčių sąlygomis (Komisijos įgyvendinimo sprendimas (ES) 2021/914) kartu su perdavimo vertinimu ir papildomomis priemonėmis. Autoparko telemetrija ir paskyros duomenys lieka ES."
@@ -397,7 +397,7 @@ export const privacy: LocalizedDoc = {
         "h2": "8. Hosting i międzynarodowe przekazywanie danych"
       },
       {
-        "p": "Orbetra działa na infrastrukturze fizycznie zlokalizowanej w Unii Europejskiej (Hetzner, Niemcy). Geokodowanie (Photon) i wyznaczanie tras (OSRM) hostujemy samodzielnie w UE. Rozliczenia realizowane są przez Stripe Payments Europe w Irlandii, e-maile transakcyjne przez punkt końcowy Postmark w UE, a DNS, TLS i ochrona przed DDoS przez Cloudflare z routingiem preferującym UE."
+        "p": "Orbetra działa na infrastrukturze fizycznie zlokalizowanej w Unii Europejskiej (Hetzner, Niemcy). Geokodowanie (Photon) i wyznaczanie tras (OSRM) hostujemy samodzielnie w UE. Rozliczenia realizowane są przez Stripe Payments Europe w Irlandii, e-maile transakcyjne przez Amazon SES we Frankfurcie, a DNS, TLS i ochrona przed DDoS przez Cloudflare z routingiem preferującym UE. SMS konfiguracyjny wysyłany na kartę SIM urządzenia podczas wdrożenia przechodzi przez Twilio."
       },
       {
         "p": "Dwa komponenty obejmują dostawców spoza EOG. Kafelki mapy w produkcie dostarcza Mapbox (Stany Zjednoczone), który otrzymuje metadane żądań, takie jak adres IP i żądany obszar mapy. Mapę podkładową na tej stronie marketingowej dostarcza CARTO — również wyłącznie metadane żądań, bez żadnych danych klientów. Te przekazania opierają się na standardowych klauzulach umownych UE (decyzja wykonawcza Komisji (UE) 2021/914) wraz z oceną skutków przekazania i środkami uzupełniającymi. Telemetria floty i dane konta pozostają w UE."
@@ -548,7 +548,7 @@ export const privacy: LocalizedDoc = {
         "h2": "8. Hosting und internationale Datenübermittlungen"
       },
       {
-        "p": "Orbetra läuft auf einer Infrastruktur, die physisch in der Europäischen Union angesiedelt ist (Hetzner, Deutschland). Geokodierung (Photon) und Routing (OSRM) hosten wir selbst in der EU. Die Abrechnung läuft über Stripe Payments Europe in Irland, transaktionale E-Mails über den EU-Endpunkt von Postmark und DNS, TLS sowie DDoS-Schutz über Cloudflare mit EU-bevorzugtem Routing."
+        "p": "Orbetra läuft auf einer Infrastruktur, die physisch in der Europäischen Union angesiedelt ist (Hetzner, Deutschland). Geokodierung (Photon) und Routing (OSRM) hosten wir selbst in der EU. Die Abrechnung läuft über Stripe Payments Europe in Irland, transaktionale E-Mails über Amazon SES in Frankfurt und DNS, TLS sowie DDoS-Schutz über Cloudflare mit EU-bevorzugtem Routing. Die Konfigurations-SMS an die SIM eines Geräts bei der Inbetriebnahme läuft über Twilio."
       },
       {
         "p": "Zwei Komponenten betreffen Anbieter außerhalb des EWR. Kartenkacheln im Produkt werden von Mapbox (Vereinigte Staaten) bereitgestellt, das Anfrage-Metadaten wie IP-Adresse und den angeforderten Kartenausschnitt erhält. Die Basiskarte auf dieser Marketing-Website wird von CARTO bereitgestellt — ebenfalls nur Anfrage-Metadaten und keine Kundendaten. Diese Übermittlungen stützen sich auf die EU-Standardvertragsklauseln (Durchführungsbeschluss (EU) 2021/914 der Kommission) zusammen mit einer Übermittlungsfolgenabschätzung und zusätzlichen Maßnahmen. Flottentelemetrie und Kontodaten verbleiben in der EU."

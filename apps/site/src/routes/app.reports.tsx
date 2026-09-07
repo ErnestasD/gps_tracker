@@ -3,6 +3,7 @@ import * as React from "react";
 import { FileText, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
+import { KB } from "@orbetra/kb";
 import { contentFor } from "@/lib/demo-content";
 import { AdminButton, Badge, PageHeader } from "@/components/admin/AdminKit";
 import { Combobox } from "@/components/admin/Combobox";
@@ -89,7 +90,7 @@ function ReportsPage() {
 
   return (
     <div className="w-full space-y-4 p-4 md:p-6">
-      <PageHeader title={t("reports.title")} description={t("reports.desc")} className="mb-0" />
+      <PageHeader title={t("reports.title")} description={t("reports.desc")} help={KB.reportTypes} className="mb-0" />
 
       {/* generator card — run/export actions live in the card header (mirrors the real ReportsPage) */}
       <div className="admin-card p-4 md:p-5">

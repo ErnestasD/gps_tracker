@@ -142,6 +142,9 @@ importers:
       '@number-flow/react':
         specifier: ^0.6.1
         version: 0.6.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@orbetra/kb':
+        specifier: workspace:*
+        version: link:../../packages/kb
       '@radix-ui/react-dialog':
         specifier: ^1.1.15
         version: 1.1.19(@types/react-dom@18.3.7(@types/react@18.3.31))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
@@ -245,6 +248,9 @@ importers:
       '@fontsource/space-grotesk':
         specifier: ^5.2.10
         version: 5.2.10
+      '@orbetra/kb':
+        specifier: workspace:*
+        version: link:../../packages/kb
       '@orbetra/shared':
         specifier: workspace:*
         version: link:../../packages/shared
@@ -468,6 +474,18 @@ importers:
       testcontainers:
         specifier: ^12.0.4
         version: 12.0.4
+      typescript:
+        specifier: ^5.8.0
+        version: 5.9.3
+      vitest:
+        specifier: ^3.2.0
+        version: 3.2.6(@types/node@22.20.0)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0)
+
+  packages/kb:
+    devDependencies:
+      eslint:
+        specifier: ^9.30.0
+        version: 9.39.4(jiti@2.7.0)
       typescript:
         specifier: ^5.8.0
         version: 5.9.3

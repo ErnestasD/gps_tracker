@@ -4,6 +4,7 @@ import { Link, useNavigate, useRouterState } from '@tanstack/react-router'
 import { Briefcase,
   BarChart3,
   Bell,
+  BookOpen,
   Building2,
   Car,
   ChevronsLeft,
@@ -106,6 +107,9 @@ const SECTIONS: NavSection[] = [
       { key: 'shell.settings', icon: Settings, to: '/app/settings' },
     ],
   },
+  // Its own section at the foot of the nav, ungated: the help is for everyone, and the reader who
+  // needs it most is the one whose role hides half the sections above.
+  { key: 'shell.support', items: [{ key: 'shell.help', icon: BookOpen, to: '/app/learn' }] },
 ]
 
 /** route → nav i18n key, for the topbar breadcrumb */
@@ -469,6 +473,11 @@ export function AppShell({ children }: { children: ReactNode }) {
             </button>
             <AccountContextSwitcher />
             <NotificationsBell />
+            {/* the help, one click from anywhere — the sidebar entry is the discoverable one, this
+                is the one an operator reaches for without looking away from what they were doing */}
+            <Link to="/app/learn" aria-label={t('shell.help')} title={t('shell.help')} data-testid="topbar-help" className="grid h-8 w-8 place-items-center rounded-md" style={{ color: 'var(--admin-ink)' }}>
+              <BookOpen className="h-4 w-4" aria-hidden />
+            </Link>
             <LanguageSwitcher />
             <Button variant="ghost" size="icon" onClick={toggleTheme} aria-label={t('shell.theme')} data-testid="topbar-theme">
               {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}

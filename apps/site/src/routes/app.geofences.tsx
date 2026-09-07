@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import * as React from "react";
 import { useTranslation } from "react-i18next";
 import { Check, Circle as CircleIcon, Hexagon, MousePointerClick, Pencil, Route as RouteIcon, Search, Trash2, X } from "lucide-react";
+import { KB } from "@orbetra/kb";
 import { PageHeader, AdminButton, Badge, AdminInput, AdminLabel } from "@/components/admin/AdminKit";
 import { fmtDate } from "@/lib/admin-format";
 import { DemoMap, type DemoZone } from "@/components/admin/DemoMap";
@@ -218,7 +219,7 @@ function GeofencesPage() {
 
   return (
     <div className="flex h-[calc(100vh-3.5rem)] flex-col gap-3 p-4 md:p-6">
-      <PageHeader title={t("geofences.title")} description={t("geofences.desc")} className="mb-0">
+      <PageHeader title={t("geofences.title")} description={t("geofences.desc")} help={KB.geofences} className="mb-0">
         <div className="flex gap-1">
           {(["polygon", "circle", "corridor"] as const).map((k) => (
             <AdminButton

@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import * as React from "react";
 import { useTranslation } from "react-i18next";
 import { MoreHorizontal, Plus } from "lucide-react";
+import { KB } from "@orbetra/kb";
 import { fmtNumber } from "@/lib/admin-format";
 import { DataTable, type Column } from "@/components/admin/DataTable";
 import { PageHeader, AdminButton, Badge, AdminInput } from "@/components/admin/AdminKit";
@@ -222,7 +223,7 @@ function DriversPage() {
 
   return (
     <div className="w-full space-y-4 p-4 md:p-6">
-      <PageHeader className="mb-0" title={t("drivers.title")} description={t("drivers.desc")}>
+      <PageHeader className="mb-0" title={t("drivers.title")} description={t("drivers.desc")} help={KB.drivers}>
         <Sheet
           open={formOpen}
           onOpenChange={(o) => {

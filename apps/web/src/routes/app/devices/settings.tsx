@@ -4,6 +4,9 @@ import { useTranslation } from 'react-i18next'
 
 import type { SettingKey } from '@orbetra/shared'
 
+import { KB } from '@orbetra/kb'
+
+import { HelpLink } from '@/components/kb/HelpLink'
 import { Badge } from '@/components/ui/badge'
 import { ApiError } from '@/lib/api'
 import { Button } from '@/components/ui/button'
@@ -98,7 +101,10 @@ export function SettingsCard({ device, canWrite }: { device: Device; canWrite: b
   return (
     <Card data-testid="settings-card">
       <CardHeader>
-        <CardTitle className="text-base">{t('devices.settings.title', { name: device.name })}</CardTitle>
+        <div className="flex items-center gap-1.5">
+          <CardTitle className="text-base">{t('devices.settings.title', { name: device.name })}</CardTitle>
+          <HelpLink slug={KB.reportingIntervals} testId="help-device-settings" />
+        </div>
       </CardHeader>
       <CardContent className="space-y-6">
         {q.isLoading && <p className="text-sm text-muted" data-testid="settings-loading">{t('admin.loading')}</p>}

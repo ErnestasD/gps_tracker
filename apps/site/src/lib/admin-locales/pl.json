@@ -66,7 +66,7 @@
     "insights": "Analizy",
     "reports": "Raporty",
     "ops": "Operacje",
-    "commands": "Komendy",
+    "commands": "Polecenia",
     "admin": "Administracja",
     "users": "Użytkownicy",
     "branding": "Marka",
@@ -93,7 +93,9 @@
     "paletteEmpty": "Brak wyników",
     "paletteSearch": "Szukaj strony, urządzenia, kierowcy, zdarzenia…",
     "paletteNoMatch": "Nic nie znaleziono dla „{{q}}”",
-    "console": "Konsola platformy"
+    "console": "Konsola platformy",
+    "support": "Wsparcie",
+    "help": "Pomoc"
   },
   "routing": {
     "title": "Planer tras",

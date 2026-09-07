@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import * as React from "react";
 import { useTranslation } from "react-i18next";
 import { Fuel, Gauge, Pause, Play, SkipBack, SkipForward } from "lucide-react";
+import { KB } from "@orbetra/kb";
 import { AdminButton, Badge, PageHeader } from "@/components/admin/AdminKit";
 import { Combobox } from "@/components/admin/Combobox";
 import { DatePicker } from "@/components/admin/DatePicker";
@@ -128,7 +129,7 @@ function HistoryPage() {
 
   return (
     <div className="w-full space-y-4 p-4 md:p-6">
-      <PageHeader title={t("playback.title")} description={t("playback.desc")}>
+      <PageHeader title={t("playback.title")} description={t("playback.desc")} help={KB.playback}>
         <div className="w-56">
           <Combobox
             value={deviceId}

@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import * as React from "react";
 import { useTranslation } from "react-i18next";
+import { KB } from "@orbetra/kb";
 import { roster, rosterNames } from "@/lib/demo-content";
 import { ArrowDown, ArrowUp, ChevronsUpDown, Search } from "lucide-react";
 import { Badge, PageHeader } from "@/components/admin/AdminKit";
@@ -188,7 +189,7 @@ function TripsPage() {
 
   return (
     <div className="flex w-full flex-col gap-4 p-4 md:p-6">
-      <PageHeader className="mb-0" title={t("trips.title")} description={t("trips.desc")}>
+      <PageHeader className="mb-0" title={t("trips.title")} description={t("trips.desc")} help={KB.howTripsAreDetected}>
         <FilterLabel label={t("trips.device")}>
           <div className="w-44">
             <Combobox

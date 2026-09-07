@@ -424,9 +424,15 @@ test('branding: edit color + name → live preview updates; add domain → TXT i
   // no "check DNS" button any more: the panel watches on its own and says so
   await expect(page.getByTestId('dns-watching-fleet.acme-e2e.test')).toBeVisible()
   await expect(page.getByTestId('dns-recheck-fleet.acme-e2e.test')).toHaveCount(0)
-  // each row carries its ⓘ and its ↗ into the public docs
+  // Each row carries its ⓘ and a link to the article that explains it at length.
+  //
+  // The DESTINATION is the assertion that matters. It used to be the public documentation site,
+  // built from the deployment's platform domain — an outbound link to our brand from inside a
+  // reseller's admin, which is the leak the white-label feature exists to prevent (ADR-042). It is
+  // now the same explanation in-product, on this deployment's own host, at the same anchor.
   await expect(dns.getByTestId('dns-hint-TXT')).toBeVisible()
-  await expect(dns.getByTestId('dns-doc-TXT')).toHaveAttribute('href', /\/docs#dns-what$/)
+  await expect(dns.getByTestId('dns-doc-TXT')).toHaveAttribute('href', '/app/learn/custom-domain#dns-what')
+  await expect(dns.getByTestId('dns-doc-TXT')).toHaveAttribute('target', '_blank')
 
   await expect(page.getByTestId('domain-fleet.acme-e2e.test')).toBeVisible()
   // unverified until DNS TXT is present (no real DNS in CI) → shows Verify affordance
@@ -958,6 +964,73 @@ test('routing planner: page renders, parse errors surface, optimize degrades gra
   await expect(page.getByTestId('routing-optimize')).toBeEnabled()
   await page.getByTestId('routing-optimize').click()
   await expect(page.getByTestId('routing-result-table').or(page.getByTestId('routing-error'))).toBeVisible({ timeout: 20_000 })
+})
+
+/**
+ * The in-product knowledge base (ADR-042).
+ *
+ * The reason it is a page inside the app rather than a link to the documentation site is the whole
+ * point of it: on a reseller's domain that link would be our brand, one click from their customer.
+ * So the thing worth asserting in a browser is that the help RENDERS HERE, on this host, with the
+ * article's own prose in it — and that a contextual `?` beside a control reaches the paragraph that
+ * answers the question rather than the top of a page.
+ */
+test('help: the knowledge base renders in-app, searches, and a contextual link lands on its anchor', async ({ page }) => {
+  await login(page)
+
+  // the index: reachable from the shell, and it lists real articles rather than an empty state.
+  // The sections carry distinct id prefixes because an article appears in two of them — under
+  // "Start here" and again on its own shelf.
+  await page.goto('/app/learn')
+  await expect(page.getByTestId('learn-start-how-tracking-works')).toBeVisible()
+  await expect(page.getByTestId('learn-card-geofences')).toBeVisible()
+
+  // search narrows in place — no results page to back out of
+  await page.getByTestId('learn-search').fill('apn')
+  await expect(page.getByTestId('learn-results')).toBeVisible()
+  await expect(page.getByTestId('learn-result-sim-and-apn')).toBeVisible()
+  await expect(page.getByTestId('learn-card-geofences')).toHaveCount(0)
+
+  // an article: its own title and its prose, not a shell
+  await page.getByTestId('learn-result-sim-and-apn').click()
+  await page.waitForURL('**/app/learn/sim-and-apn')
+  await expect(page.getByTestId('learn-title')).toHaveText(/APN/i)
+  await expect(page.getByRole('heading', { name: /APN/i, level: 2 }).first()).toBeVisible()
+
+  // …and the anchors a contextual help link targets exist AND are scrolled to.
+  //
+  // "Is the heading visible" was the wrong assertion, and it passed for as long as the feature was
+  // broken: these articles are short enough that several headings sit on screen at the top. The
+  // property that matters is that the page MOVED — someone clicking the `?` about the trailing dot
+  // in a DNS record must land on that paragraph, not on paragraph one of a twenty-block article.
+  await expect(page.locator('#apn')).toBeVisible()
+
+  /** Where `#dns-dot` sits in the viewport right now. Negative once it is scrolled past the top. */
+  const dnsDotTop = async (): Promise<number> =>
+    page.evaluate(() => {
+      const el = document.getElementById('dns-dot')
+      return el === null ? 99_999 : Math.round(el.getBoundingClientRect().top)
+    })
+
+  // The control: without a fragment the heading is far down a twenty-block article. This is what
+  // the reader used to get from every contextual link, and it is what makes the next assertion
+  // mean something rather than passing on a short page.
+  await page.goto('/app/learn/custom-domain')
+  await expect(page.getByTestId('learn-title')).toBeVisible()
+  expect(await dnsDotTop()).toBeGreaterThan(600)
+
+  // With the fragment, the same heading is at the top.
+  await page.goto('/app/learn/custom-domain#dns-dot')
+  await expect(page.getByTestId('learn-title')).toBeVisible()
+  await expect.poll(dnsDotTop).toBeLessThan(200)
+
+  // an article this account may not read is a not-found, not a redacted page
+  await page.goto('/app/learn/no-such-article')
+  await expect(page.getByTestId('learn-back')).toBeVisible()
+
+  // the contextual entry point: the devices page carries the article for its own screen
+  await page.goto('/app/devices')
+  await expect(page.getByTestId('help-connect-a-tracker')).toHaveAttribute('href', '/app/learn/connect-a-tracker')
 })
 
 /**

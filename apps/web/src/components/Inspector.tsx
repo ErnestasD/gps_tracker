@@ -4,6 +4,9 @@ import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 
+import { KB, type KbSlug } from '@orbetra/kb'
+
+import { HelpLink } from '@/components/kb/HelpLink'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { StatusDot } from '@/components/ui-x/StatusDot'
@@ -412,12 +415,13 @@ function TabStrip({
   )
 }
 
-function Section({ title, icon: Icon, children }: { title: string; icon?: typeof Gauge; children: React.ReactNode }) {
+function Section({ title, icon: Icon, help, children }: { title: string; icon?: typeof Gauge; help?: KbSlug; children: React.ReactNode }) {
   return (
     <div className="rounded-card border border-line p-3">
       <div className="mb-2 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted">
         {Icon !== undefined && <Icon className="h-3 w-3" aria-hidden />}
         {title}
+        {help !== undefined && <HelpLink slug={help} />}
       </div>
       {children}
     </div>
@@ -454,7 +458,7 @@ function OverviewTab({
 
   return (
     <div className="space-y-3" data-testid="overview-tab">
-      <Section title={t('map.inspector.position')}>
+      <Section title={t('map.inspector.position')} help={KB.positionAccuracy}>
         <dl className="grid grid-cols-2 gap-2 text-xs">
           {/* The coordinate is only shown when it is a real one: a device with no fix reports 0/0,
               and printing that as a position is how a vehicle ends up in the Gulf of Guinea. */}

@@ -4,6 +4,8 @@ import { ArrowRight, Car, Cpu, Plug, Search } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import { KB } from "@orbetra/kb";
+import { LearnLink } from "@/components/site/LearnLink";
 import { SelectField } from "@/components/site/SelectField";
 import { cn } from "@/lib/utils";
 
@@ -164,6 +166,12 @@ function CompatibilityPage() {
           {t("compat.h1")} <span className="text-gradient">{t("compat.h2")}</span>
         </h1>
         <p className="mt-6 text-lg text-muted-foreground max-w-2xl">{t("compat.sub")}</p>
+        {/* the two questions this table cannot answer: what CAN actually is, and which tracker to
+            buy in the first place */}
+        <div className="mt-6 flex flex-wrap items-center gap-x-5 gap-y-2">
+          <LearnLink slug={KB.canAndObd} />
+          <LearnLink slug={KB.chooseATracker} />
+        </div>
       </section>
 
       {/* ── step 1: device ───────────────────────────────────────────────── */}

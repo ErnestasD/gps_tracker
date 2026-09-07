@@ -1,3 +1,5 @@
+import { Suspense, lazy } from 'react'
+
 import {
   createRootRoute,
   createRoute,
@@ -42,6 +44,17 @@ import { DriversPage } from '@/routes/app/drivers'
 import { MaintenancePage } from '@/routes/app/maintenance'
 import { SettingsPage } from '@/routes/app/settings'
 import { SharePage } from '@/routes/share/index'
+
+/**
+ * The in-product knowledge base is LAZY, and it is the only lazy route in this tree.
+ *
+ * `@orbetra/kb/content` is the whole manual in four languages — a few hundred kilobytes of prose
+ * that an operator watching a map has no use for. React.lazy puts it in its own chunk, so it is
+ * downloaded by the people who open the help and by nobody else. Every contextual "learn more"
+ * link elsewhere in the app consults only the package's metadata, which stays in the main bundle.
+ */
+const LearnIndexPage = lazy(() => import('@/routes/app/learn/index').then((m) => ({ default: m.LearnIndexPage })))
+const LearnArticlePage = lazy(() => import('@/routes/app/learn/article').then((m) => ({ default: m.LearnArticlePage })))
 
 /** Reload survival: the access token is memory-only, but the httpOnly refresh
  * cookie is not — try a refresh before deciding the user is logged out. */
@@ -337,6 +350,37 @@ const auditRoute = createRoute({
   component: AuditPage,
 })
 
+/**
+ * The help reader lives INSIDE the app shell, on this deployment's own domain.
+ *
+ * Not a link to the public documentation site: on a reseller's host that link is our brand, in
+ * their product, one click from their customer. Same articles, rendered here, under their name.
+ */
+const learnRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: '/learn',
+  component: function LearnRoute() {
+    return (
+      <Suspense fallback={null}>
+        <LearnIndexPage />
+      </Suspense>
+    )
+  },
+})
+
+const learnArticleRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: '/learn/$slug',
+  component: function LearnArticleRoute() {
+    const { slug } = learnArticleRoute.useParams()
+    return (
+      <Suspense fallback={null}>
+        <LearnArticlePage slug={slug} />
+      </Suspense>
+    )
+  },
+})
+
 const settingsRoute = createRoute({
   getParentRoute: () => appRoute,
   path: '/settings',
@@ -417,10 +461,23 @@ const routeTree = rootRoute.addChildren([
   verifyEmailRoute,
   shareRoute,
   consoleRoute.addChildren([consoleIndexRoute, consoleTenantsRoute, consoleUsersRoute, consoleBillingRoute, consoleLapsesRoute, consolePartnersRoute, consoleErrorsRoute]),
-  appRoute.addChildren([appIndexRoute, dashboardRoute, mapRoute, devicesRoute, accountsRoute, driversRoute, maintenanceRoute, tripsRoute, routingRoute, playbackRoute, geofencesRoute, rulesRoute, eventsRoute, reportsRoute, apiKeysRoute, webhooksRoute, platformRoute, affiliatesRoute, brandingRoute, billingRoute, auditRoute, settingsRoute]),
+  appRoute.addChildren([appIndexRoute, dashboardRoute, mapRoute, devicesRoute, accountsRoute, driversRoute, maintenanceRoute, tripsRoute, routingRoute, playbackRoute, geofencesRoute, rulesRoute, eventsRoute, reportsRoute, apiKeysRoute, webhooksRoute, platformRoute, affiliatesRoute, brandingRoute, billingRoute, auditRoute, settingsRoute, learnRoute, learnArticleRoute]),
 ])
 
-export const router = createRouter({ routeTree })
+/**
+ * `scrollRestoration` is what makes a `#fragment` work at all.
+ *
+ * In router-core the hash handler — `document.getElementById(hash)?.scrollIntoView(...)` — lives
+ * INSIDE `setupScrollRestoration`, which only runs when this option is set. Without it every
+ * contextual help link (`/app/learn/custom-domain#dns-dot`) resolved its anchor correctly, rendered
+ * correctly, and left the reader at the top of the article. apps/site has always set it; this tree
+ * never did, so the defect was invisible to anyone comparing the two.
+ *
+ * It is not sufficient on its own — see the hash effect in the learn route, which covers the cold
+ * new-tab load of a lazily-imported page — but it is what makes an in-app navigation to a heading
+ * behave the way every other site does.
+ */
+export const router = createRouter({ routeTree, scrollRestoration: true })
 
 declare module '@tanstack/react-router' {
   interface Register {

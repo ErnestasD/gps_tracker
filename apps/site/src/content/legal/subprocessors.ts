@@ -47,9 +47,14 @@ export const subprocessors: LocalizedDoc = {
               "Ireland (EU)"
             ],
             [
-              "Postmark (ActiveCampaign, LLC)",
+              "Amazon Web Services (Amazon SES)",
               "Transactional email (alerts, reports, account emails)",
-              "EU region endpoint"
+              "Germany (EU) — eu-central-1"
+            ],
+            [
+              "Twilio",
+              "Configuration SMS sent to a device SIM during onboarding (device phone number and command text only — no position data)",
+              "USA/EU — SCCs in place"
             ],
             [
               "Cloudflare, Inc.",
@@ -121,9 +126,14 @@ export const subprocessors: LocalizedDoc = {
               "Airija (ES)"
             ],
             [
-              "Postmark (ActiveCampaign, LLC)",
+              "Amazon Web Services (Amazon SES)",
               "Sisteminiai el. laiškai (įspėjimai, ataskaitos, paskyros laiškai)",
-              "ES regiono galinis taškas"
+              "Vokietija (ES) — eu-central-1"
+            ],
+            [
+              "Twilio",
+              "Konfigūracijos SMS, siunčiama į įrenginio SIM diegimo metu (tik įrenginio telefono numeris ir komandos tekstas — jokių pozicijos duomenų)",
+              "JAV/ES — taikomos standartinės sutarčių sąlygos"
             ],
             [
               "Cloudflare, Inc.",
@@ -195,9 +205,14 @@ export const subprocessors: LocalizedDoc = {
               "Irlandia (UE)"
             ],
             [
-              "Postmark (ActiveCampaign, LLC)",
+              "Amazon Web Services (Amazon SES)",
               "E-maile transakcyjne (alerty, raporty, wiadomości dotyczące konta)",
-              "Punkt końcowy w regionie UE"
+              "Niemcy (UE) — eu-central-1"
+            ],
+            [
+              "Twilio",
+              "SMS konfiguracyjny wysyłany na kartę SIM urządzenia podczas wdrożenia (tylko numer telefonu urządzenia i treść polecenia — bez danych o pozycji)",
+              "USA/UE — obowiązują standardowe klauzule umowne"
             ],
             [
               "Cloudflare, Inc.",
@@ -269,9 +284,14 @@ export const subprocessors: LocalizedDoc = {
               "Irland (EU)"
             ],
             [
-              "Postmark (ActiveCampaign, LLC)",
+              "Amazon Web Services (Amazon SES)",
               "Transaktions-E-Mails (Benachrichtigungen, Berichte, Konto-E-Mails)",
-              "Endpunkt in der EU-Region"
+              "Deutschland (EU) — eu-central-1"
+            ],
+            [
+              "Twilio",
+              "Konfigurations-SMS an die SIM eines Geräts bei der Inbetriebnahme (nur Rufnummer des Geräts und Befehlstext — keine Positionsdaten)",
+              "USA/EU — Standardvertragsklauseln vereinbart"
             ],
             [
               "Cloudflare, Inc.",

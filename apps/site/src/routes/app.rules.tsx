@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import * as React from "react";
 import { useTranslation } from "react-i18next";
 import { MoreHorizontal, Plus, Trash2 } from "lucide-react";
+import { KB } from "@orbetra/kb";
 import { PageHeader, AdminButton, AdminSwitch, Badge } from "@/components/admin/AdminKit";
 import { contentFor } from "@/lib/demo-content";
 
@@ -78,7 +79,7 @@ function RulesPage() {
 
   return (
     <div className="w-full space-y-4 p-4 md:p-6">
-      <PageHeader title={t("rules.title")} description={t("rules.desc")} className="mb-0">
+      <PageHeader title={t("rules.title")} description={t("rules.desc")} help={KB.rulesAndAlerts} className="mb-0">
         <AdminButton>
           <Plus className="h-4 w-4" aria-hidden />
           {t("rules.add")}

@@ -97,7 +97,9 @@
     "accounts": "Konten",
     "accountContext": "Kundenkontext",
     "allAccounts": "Alle Konten",
-    "overviewNotice": "Übersichtsmodus: Sie sehen die Daten aller Kunden. Zum Bearbeiten oben einen Kunden wählen."
+    "overviewNotice": "Übersichtsmodus: Sie sehen die Daten aller Kunden. Zum Bearbeiten oben einen Kunden wählen.",
+    "support": "Support",
+    "help": "Hilfe"
   },
   "routing": {
     "title": "Routenplaner",
@@ -602,7 +604,7 @@
     "drawnTitle": "Form gezeichnet",
     "drawnNeedName": "Jetzt einen Namen eingeben und Speichern klicken.",
     "drawnReady": "Bereit — zum Erstellen Speichern klicken.",
-    "deleteError": "Geofence konnte nicht gelöscht werden — bitte erneut versuchen.",
+    "deleteError": "Geozone konnte nicht gelöscht werden — bitte erneut versuchen.",
     "edit": "Bearbeiten",
     "editTitle": "Geozone bearbeiten",
     "editHint": "Name oder Farbe ändern. Ein Korridor lässt sich nur durch Neuzeichnen umformen — seine Mittellinie wird nicht gespeichert.",
@@ -1233,7 +1235,7 @@
     "statScope": "Die Zahlen beziehen sich auf die {{n}} geladenen Ereignisse.",
     "loadMore": "Mehr laden",
     "k": {
-      "geofence": "Geofence",
+      "geofence": "Geozone",
       "overspeed": "Geschwindigkeit",
       "ignition": "Zündung",
       "din_change": "Eingangswechsel",
@@ -1318,7 +1320,7 @@
       "trips": "Fahrten",
       "stops": "Stopps",
       "overspeed": "Tempo",
-      "geofence": "Geofence",
+      "geofence": "Geozone",
       "engine_hours": "Motorstunden"
     },
     "col": {
@@ -2016,6 +2018,26 @@
     "direct_25": "Direct 25",
     "direct_50": "Direct 50",
     "direct_100": "Direct 100"
+  },
+  "learn": {
+    "title": "Hilfe",
+    "desc": "Anleitungen zu jedem Teil des Produkts, in Klartext.",
+    "searchPlaceholder": "Hilfe durchsuchen…",
+    "searchAria": "Hilfeartikel durchsuchen",
+    "clear": "Suche zurücksetzen",
+    "results": "Gefunden: {{count}}",
+    "noResults": "Dazu passt nichts. Versuchen Sie ein kürzeres Wort oder stöbern Sie in den Themen unten.",
+    "startHere": "Hier anfangen",
+    "onThisPage": "Auf dieser Seite",
+    "inThisSection": "Mehr in diesem Abschnitt",
+    "prev": "Zurück",
+    "next": "Weiter",
+    "backToIndex": "Alle Artikel",
+    "notFound": "Diesen Artikel gibt es nicht",
+    "notFoundBody": "Vielleicht wurde er umbenannt, oder er gilt für dieses Konto nicht. Alles, was Ihnen zur Verfügung steht, steht im Hilfeverzeichnis.",
+    "openHelp": "Hilfe öffnen: {{title}}",
+    "readAbout": "Mehr zu: {{title}}",
+    "neutralProduct": "die Plattform"
   },
   "readiness": {
     "blockedTitle": "Ihr Arbeitsbereich ist noch nicht live",

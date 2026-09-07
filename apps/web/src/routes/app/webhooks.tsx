@@ -3,6 +3,8 @@ import { Plus, Trash2, Webhook as WebhookIcon } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { KB } from '@orbetra/kb'
+
 import { AdminButton, AdminCheckbox, AdminInput, AdminLabel, AdminSwitch, Badge, PageHeader } from '@/components/admin/AdminKit'
 import { ConfirmDialog } from '@/components/admin/ConfirmDialog'
 import { Sheet, SheetContent, SheetFooter, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
@@ -36,7 +38,7 @@ export function WebhooksPage() {
 
   return (
     <div className="w-full space-y-4 p-4 md:p-6">
-      <PageHeader className="mb-0" title={t('webhooks.title')} description={t('webhooks.desc')}>
+      <PageHeader className="mb-0" title={t('webhooks.title')} description={t('webhooks.desc')} help={KB.webhooks}>
         <Sheet open={addOpen} onOpenChange={setAddOpen}>
           <SheetTrigger asChild>
             <AdminButton data-testid="webhook-add-open">
