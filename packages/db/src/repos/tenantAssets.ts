@@ -160,9 +160,12 @@ export function createTenantAssetRepo(prisma: PrismaClient, audit: AuditRepo): T
       })
 
       // Two records because they are two different things a reviewer looks for: "who changed the
-      // brand" reads the branding trail it already had, "what was uploaded" reads this one.
+      // brand" reads the branding trail it already had, "what was uploaded" reads this one. The
+      // branding half is written ONLY if the object moved: re-uploading the identical file (same
+      // hash ⇒ same path), or deleting an upload the tenant had already typed a URL over, leaves
+      // `branding` untouched, and a row whose two sides are identical says nothing to anybody.
       await audit.record(scope, actor, { action: 'update', entity: 'branding_asset', entityId: slot, after: toMeta(asset) })
-      await audit.record(scope, actor, { action: 'update', entity: 'branding', entityId: scope.tenantId, before, after })
+      await audit.recordIfChanged(scope, actor, { entity: 'branding', entityId: scope.tenantId, before, after })
       return toMeta(asset)
     },
 
@@ -189,7 +192,7 @@ export function createTenantAssetRepo(prisma: PrismaClient, audit: AuditRepo): T
       })
       if (result === null) return false
       await audit.record(scope, actor, { action: 'delete', entity: 'branding_asset', entityId: slot, before: toMeta(result.existing) })
-      await audit.record(scope, actor, { action: 'update', entity: 'branding', entityId: scope.tenantId, before: result.before, after: result.after })
+      await audit.recordIfChanged(scope, actor, { entity: 'branding', entityId: scope.tenantId, before: result.before, after: result.after })
       return true
     },
   }

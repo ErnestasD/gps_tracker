@@ -404,7 +404,7 @@ export function createTenantRepo(prisma: PrismaClient, audit: AuditRepo): Tenant
           ...(data.plan !== undefined ? { plan: data.plan } : {}),
         },
       })
-      await audit.record({ tenantId: id }, actor, { action: 'update', entity: 'tenant', entityId: id, before: auditView(before), after: auditView(row) })
+      await audit.recordIfChanged({ tenantId: id }, actor, { entity: 'tenant', entityId: id, before: auditView(before), after: auditView(row) })
       return row
     },
     remove: async (actor, id) => {
@@ -421,7 +421,7 @@ export function createTenantRepo(prisma: PrismaClient, audit: AuditRepo): Tenant
     updateBranding: async (actor, tenantId, branding) => {
       const before = await prisma.tenant.findUnique({ where: { id: tenantId } })
       const row = await prisma.tenant.update({ where: { id: tenantId }, data: { branding: branding as never } })
-      await audit.record({ tenantId }, actor, { action: 'update', entity: 'branding', entityId: tenantId, before: before === null ? null : auditView(before), after: auditView(row) })
+      await audit.recordIfChanged({ tenantId }, actor, { entity: 'branding', entityId: tenantId, before: before === null ? null : auditView(before), after: auditView(row) })
       return row
     },
     getBilling: async (tenantId) => {
