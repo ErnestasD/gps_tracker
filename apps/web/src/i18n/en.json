@@ -2015,5 +2015,23 @@
     "direct_25": "Direct 25",
     "direct_50": "Direct 50",
     "direct_100": "Direct 100"
+  },
+  "readiness": {
+    "blockedTitle": "Your workspace is not live yet",
+    "blockedDesc": "Your customers have nowhere to sign in, so creating accounts, inviting users and sharing links are paused until this is done.",
+    "hintsTitle": "Finish setting up your brand",
+    "hintsDesc": "Everything works. These are the pieces that would make it fully yours.",
+    "cta": "Open branding settings",
+    "blocker": {
+      "no_verified_domain": "Add a domain and verify it — either your own, or the instant subdomain we host"
+    },
+    "hint": {
+      "product_name": "Add your product name — it replaces ours on screens and in e-mail",
+      "logo": "Add a logo — without one we show your name as text",
+      "favicon": "Add a favicon — the browser-tab and home-screen icon",
+      "support_email": "Add a support address — it is who your customers reach when they reply",
+      "colors": "Pick your primary colour",
+      "own_domain": "Move to your own domain — on ours, your customers see our hostname"
+    }
   }
 }

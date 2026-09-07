@@ -65,6 +65,15 @@ beforeAll(async () => {
   t1Token = await mintTestToken({ userId: s1.userId, tenantId: s1.tenantId, role: 'tsp_admin' })
   t2Token = await mintTestToken({ userId: s2.userId, tenantId: s2.tenantId, role: 'tsp_admin' })
 
+  // A share link is handed to somebody OUTSIDE the workspace and opens an unauthenticated page whose
+  // branding resolves by Host — so a reseller who has configured nothing would be showing OUR brand
+  // to their customer's customer. Minting one is therefore behind the readiness gate (plan W2), and
+  // these fixtures give both tenants a verified host so the suite tests SHARES rather than the gate.
+  // Written straight through the repo, `verified: true`, the same way a platform subdomain is
+  // created — there is no DNS to prove in a fixture.
+  await db.tenantDomains.create({ tenantId: s1.tenantId }, { userId: s1.userId }, 'fleet.s1.test', 'tok-s1', { verified: true })
+  await db.tenantDomains.create({ tenantId: s2.tenantId }, { userId: s2.userId }, 'fleet.s2.test', 'tok-s2', { verified: true })
+
   const acct = (await db.accounts.list({ tenantId: s1.tenantId }))[0]!
   const [prof] = await pool.query<{ id: string }>(`INSERT INTO device_profiles(id,key,name) VALUES (gen_random_uuid(),'sk','P') RETURNING id`).then((r) => r.rows)
   const dev = await db.devices.create({ tenantId: s1.tenantId, accountId: acct.id }, { userId: s1.userId }, { accountId: acct.id, profileId: prof!.id, imei: '356307042449010', name: 'Courier Van' })

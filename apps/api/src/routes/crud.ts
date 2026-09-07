@@ -16,6 +16,9 @@ import {
   dealDecisionSchema,
   commissionStatusUpdateSchema,
   brandingSchema,
+  brandingReadSchema,
+  whiteLabelReadiness,
+  type Readiness,
   brandAssetSlotSchema,
   brandAssetUploadSchema,
   inspectBrandAsset,
@@ -335,6 +338,45 @@ const id = (c: Context): string => c.req.param('id') ?? ''
 const tenantWide = (c: Context<AuthEnv>): boolean => c.get('auth').accountId === undefined
 
 /**
+ * Is this reseller ready to be shown to THEIR customers? (plan W2)
+ *
+ * One definition, three gates and one endpoint, so the answer the UI shows and the answer the server
+ * enforces cannot drift. The predicate itself is pure and lives in @orbetra/shared; this is only the
+ * two reads it needs.
+ *
+ * Fails READY on a fault. A lookup error must not lock a paying reseller out of creating accounts:
+ * the cost of one un-gated creation is a leak we have already fixed thirteen instances of and now
+ * sweep for, while the cost of the opposite is a customer who cannot work and calls support.
+ */
+async function readinessOf(db: Db, deps: { platformDomain?: string | undefined }, tenantId: string): Promise<Readiness> {
+  const [tenant, domains] = await Promise.all([db.tenants.get(tenantId), db.tenantDomains.list({ tenantId })])
+  return whiteLabelReadiness({
+    plan: tenant?.plan ?? null,
+    branding: brandingReadSchema.safeParse(tenant?.branding ?? {}).data ?? {},
+    domains: domains.map((d) => ({ domain: d.domain, verified: d.verified })),
+    ...(deps.platformDomain !== undefined ? { platformDomain: deps.platformDomain } : {}),
+  })
+}
+
+/** 403 with the exact list of what is missing — never a bare refusal the operator must guess at. */
+async function requireReady(c: Context<AuthEnv>, db: Db, deps: { platformDomain?: string | undefined }): Promise<Response | null> {
+  // A platform_admin acting is US, not a reseller. Our own tenant is a `tsp_*` row with no verified
+  // domain, so without this the gate would refuse our own operators the moment they created a user —
+  // and the thing readiness protects (a reseller's customers seeing our brand) cannot happen when we
+  // ARE the brand.
+  if (c.get('auth').role === 'platform_admin') return null
+  let r: Readiness
+  try {
+    r = await readinessOf(db, deps, c.get('auth').tenantId)
+  } catch {
+    return null // fail ready — see readinessOf
+  }
+  if (r.ready) return null
+  return problem(c, 403, 'Forbidden', `not_ready: ${r.hardBlockers.join(',')}`)
+}
+
+
+/**
  * Serialize a device-cap check-then-create for one tenant.
  *
  * `POST /v1/devices` took this lock precisely because a plain count-then-insert races — and then
@@ -589,6 +631,11 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
       } },
     { method: 'post', path: '/v1/accounts', scopeClass: 'tenant', entity: 'account', shape: 'collection', entitlement: 'subAccounts',
       handler: async (c) => {
+        // A sub-account is the first thing that creates an AUDIENCE, and a half-configured reseller
+        // has no host their customers can reach (plan W2). Gated here rather than at sign-in: the
+        // branding form lives inside the app, so locking them out would be circular.
+        const notReady = await requireReady(c, db, deps)
+        if (notReady !== null) return notReady
         // `accounts.create` is the ONE account method that does not honour the pin: list/get/update/
         // remove all go through listWhere/findScoped, while create writes `tenantId` from the scope
         // and ignores `scope.accountId` entirely. A pinned admin therefore added siblings to the
@@ -647,6 +694,10 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
       } },
     { method: 'post', path: '/v1/users', scopeClass: 'tenant', entity: 'user', shape: 'collection',
       handler: async (c) => {
+        // Inviting a user creates an audience the same way a sub-account does — and this one gets an
+        // activation mail immediately, which is the single most brand-sensitive message we send.
+        const notReady = await requireReady(c, db, deps)
+        if (notReady !== null) return notReady
         const data = await body(c, userCreateSchema)
         if (data === null) return problem(c, 400, 'Bad Request')
         const a = auth(c)
@@ -1320,6 +1371,13 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
         const scope = scopeOf(a)
         const device = await db.devices.get(scope, id(c))
         if (device === null) return problem(c, 404, 'Not Found')
+        // Readiness AFTER the scope check, deliberately. A share link is handed to someone OUTSIDE
+        // the workspace and opens an unauthenticated page, so it is gated (plan W2) — but a device
+        // that is not yours must stay a 404, exactly as the docblock above requires. Answering 403
+        // first would tell a caller "that device exists, you are simply not configured", which is a
+        // different sentence about someone else's tenant.
+        const notReady = await requireReady(c, db, deps)
+        if (notReady !== null) return notReady
         // Retiring revokes a device's live links; minting a NEW one afterwards would re-open the
         // unauthenticated endpoint for a vehicle the operator has already said is no longer theirs
         // (audit review MED). Retire is a soft delete, so `get` still returns the row.
@@ -2337,6 +2395,10 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
           return problem(c, 503, 'Service Unavailable', 'could not mint a map token')
         }
       } },
+    // Readiness is a READ every role may make: the dashboard card is what tells a reseller why a
+    // button is disabled, and an account_manager who cannot see the reason would simply be stuck.
+    { method: 'get', path: '/v1/tenant/readiness', scopeClass: 'tenant', entity: 'branding', shape: 'collection',
+      handler: async (c) => json(c, await readinessOf(db, deps, auth(c).tenantId)) },
     { method: 'get', path: '/v1/tenant/branding', scopeClass: 'tenant', entity: 'branding', shape: 'collection',
       handler: async (c) => {
         const tenant = await db.tenants.get(auth(c).tenantId)

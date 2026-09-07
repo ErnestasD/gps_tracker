@@ -1,4 +1,4 @@
-import { parseAssetPath } from '@orbetra/shared'
+import { parseAssetPath, type Readiness } from '@orbetra/shared'
 
 import { getJson, mutate } from './client'
 import { getTheme, onThemeChange, type Theme } from './prefs'
@@ -561,6 +561,14 @@ export function clean(b: Branding): Branding {
   return out
 }
 export const listDomains = () => getJson<TenantDomain[]>('/v1/tenant/domains')
+
+/**
+ * Whether this reseller may create customer-facing accounts yet, and what is missing (plan W2).
+ *
+ * The same value the SERVER enforces with, so the card and the 403 can never disagree — a button
+ * that looks enabled and then refuses is worse than one that explains itself first.
+ */
+export const getReadiness = () => getJson<Readiness>('/v1/tenant/readiness')
 /** `txtRecord`/`dnsTarget` are null for a PLATFORM SUBDOMAIN — it comes back already verified,
  *  with nothing for the tenant to publish and nowhere for them to point anything. */
 export const addDomain = (domain: string) =>

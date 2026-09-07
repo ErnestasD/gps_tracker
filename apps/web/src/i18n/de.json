@@ -2015,5 +2015,23 @@
     "direct_25": "Direct 25",
     "direct_50": "Direct 50",
     "direct_100": "Direct 100"
+  },
+  "readiness": {
+    "blockedTitle": "Ihr Arbeitsbereich ist noch nicht live",
+    "blockedDesc": "Ihre Kunden haben keine Anmeldeadresse, daher sind das Anlegen von Konten, Einladungen und Freigabelinks pausiert, bis dies erledigt ist.",
+    "hintsTitle": "Markeneinrichtung abschließen",
+    "hintsDesc": "Alles funktioniert. Diese Punkte würden es vollständig zu Ihrem machen.",
+    "cta": "Branding-Einstellungen öffnen",
+    "blocker": {
+      "no_verified_domain": "Domain hinzufügen und verifizieren — Ihre eigene oder die sofort verfügbare Subdomain von uns"
+    },
+    "hint": {
+      "product_name": "Produktnamen hinzufügen — er ersetzt unseren auf Bildschirmen und in E-Mails",
+      "logo": "Logo hinzufügen — ohne eines zeigen wir Ihren Namen als Text",
+      "favicon": "Favicon hinzufügen — das Symbol für Browser-Tab und Startbildschirm",
+      "support_email": "Support-Adresse hinzufügen — dorthin gelangen Kunden beim Antworten",
+      "colors": "Primärfarbe wählen",
+      "own_domain": "Auf Ihre eigene Domain wechseln — auf unserer sehen Ihre Kunden unseren Hostnamen"
+    }
   }
 }

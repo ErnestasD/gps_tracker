@@ -144,6 +144,13 @@ async function seedTenant(
   const am = await db.users.create(scope, actor, { email: `${name}-am@x.test`, passwordHash: pwHash, role: 'account_manager', accountId: a1.id })
   const vw = await db.users.create(scope, actor, { email: `${name}-vw@x.test`, passwordHash: pwHash, role: 'viewer', accountId: a1.id })
   const accountAdmin = await db.users.create(scope, actor, { email: `${name}-aa@x.test`, passwordHash: pwHash, role: 'tsp_admin', accountId: a1.id })
+
+  // A verified host, because these fixtures represent WORKING resellers and a working reseller has
+  // one. Without it the readiness gate (plan W2) refuses account creation and user invitations, and
+  // half the sweeps below would be testing that gate instead of the scope rules they exist for.
+  // Written straight through the repo, the same way a platform subdomain is created — there is no
+  // DNS to prove in a fixture.
+  await db.tenantDomains.create(scope, actor, `fleet.${name}.test`, `tok-${name}`, { verified: true })
   const eventId = await poolInsertEvent(tenant.id, a1.id, '1')
   const commandId = await poolInsertCommand(tenant.id, a1.id, device.id.toString())
   const exportId = await poolInsertExport(tenant.id, a1.id)
