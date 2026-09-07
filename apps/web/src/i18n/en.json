@@ -2079,6 +2079,7 @@
       "pending": "Waiting for DNS",
       "verified": "Verified",
       "failed": "Not verified"
-    }
+    },
+    "ownershipNote": "Add this TXT record to your DNS and press Check. It proves the domain is yours — nothing is created in your name until it resolves. Your mail keeps going out from our address the whole time."
   }
 }

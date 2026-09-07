@@ -4,7 +4,11 @@ A guide for partners on a **TSP plan**. Everything here is done by you, in your 
 own DNS. It takes about twenty minutes, plus however long your DNS provider takes to publish.
 
 By the end, your customers sign in at your address, see your logo and colours, and receive mail from
-your own address. Our name appears nowhere.
+your own address. Nothing they open names us.
+
+The one place our name still appears is your **DNS zone** — the record you point at us in Part 1, and
+the `_orbetra-verify` label beside it. Those are visible to anyone who looks up your domain, and no
+setting removes them; only a change on our side will. Nobody encounters them by using the product.
 
 ---
 
@@ -140,7 +144,14 @@ Settings → Branding → **Send mail from your own address**.
 **Step 1** — enter the mailbox name (`alerts`, `noreply`, `fleet` — anything) and the domain you
 want to send from (`yourcompany.com`). Press *Set sending domain*.
 
-**Step 2** — we show **three CNAME records**. Add all three to your DNS exactly as shown:
+**Step 2 — prove the domain is yours.** We show a single `TXT` record on
+`_orbetra-verify.yourcompany.com`. Publish it and press *Check verification*.
+
+Nothing is created in your name until this record resolves. That is deliberate: it is what stops
+anyone else naming your domain here and sending mail as your company.
+
+**Step 3 — publish the DKIM keys.** Once ownership is proved we show **three CNAME records**. Add all
+three exactly as shown:
 
 | Field | Value |
 |---|---|
@@ -151,7 +162,7 @@ want to send from (`yourcompany.com`). Press *Set sending domain*.
 These are DKIM keys. They let mail servers confirm the message really came from your domain, which
 is what stops it landing in spam.
 
-**Step 3** — press *Check verification*. This can take up to an hour after the records are
+**Step 4** — press *Check verification* again. This can take up to an hour after the records are
 published; it is the slowest step in this guide and there is nothing to do but wait. Pressing it
 early is harmless — it just reports "waiting for DNS" again.
 

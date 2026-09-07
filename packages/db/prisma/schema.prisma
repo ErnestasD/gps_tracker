@@ -454,6 +454,10 @@ model TenantSendingDomain {
   /// 'pending' | 'verified' | 'failed'. A string, not an enum: SES has more states than we model and
   /// a fourth one must not need a migration. The API validates against the zod schema.
   status    String   @default("pending")
+  /// CSPRNG ownership proof, published by the tenant as `_orbetra-verify.<domain>` TXT. SES tells us
+  /// a DOMAIN passed DKIM; it never tells us WHO asked, so without this a tenant could adopt an
+  /// identity another tenant verified and send DKIM-signed mail as their company.
+  txtToken  String
   /// the three DKIM selector tokens SES returns; each becomes `<token>._domainkey.<domain>` CNAME
   dkimTokens String[]
   /// the SES identity name, kept so a delete can name what to remove even if `domain` is edited
@@ -465,6 +469,10 @@ model TenantSendingDomain {
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
+  // Global uniqueness applies ONLY to VERIFIED rows — enforced by a partial unique index in the
+  // migration (Prisma cannot express `WHERE "verifiedAt" IS NOT NULL`), the same shape and for the
+  // same reason as TenantDomain: first to prove ownership wins, and a squatter's pending row cannot
+  // block the real owner.
   @@map("tenant_sending_domains")
 }
 

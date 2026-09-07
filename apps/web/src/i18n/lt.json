@@ -2089,6 +2089,7 @@
       "pending": "Laukiama DNS",
       "verified": "Patvirtinta",
       "failed": "Nepatvirtinta"
-    }
+    },
+    "ownershipNote": "Įrašykite šį TXT įrašą į savo DNS ir spauskite Tikrinti. Jis įrodo, kad domenas jūsų – kol jis neatsiranda, jūsų vardu nieko nesukuriama. Laiškai visą tą laiką toliau siunčiami mūsų adresu."
   }
 }

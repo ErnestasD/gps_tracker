@@ -106,6 +106,15 @@ const TENANT_WIDE_ONLY: readonly (readonly [string, string, string?])[] = [
   ['GET', '/v1/tenant/domains/:id', 'domain'],
   ['DELETE', '/v1/tenant/domains/:id', 'domain'],
   ['POST', '/v1/tenant/domains/:id/verify', 'domain'],
+  // The SENDING identity is tenant-wide the same way the app domains above are, and the blast radius
+  // is the same shape: an account-pinned admin — an end customer's administrator — setting or
+  // deleting it changes, or stops, the mail every sibling account receives. crud.ts says in as many
+  // words that a guard added to a route without an entry here is "locked by nothing"; these are the
+  // entries.
+  ['GET', '/v1/tenant/sending-domain'],
+  ['POST', '/v1/tenant/sending-domain'],
+  ['POST', '/v1/tenant/sending-domain/verify'],
+  ['DELETE', '/v1/tenant/sending-domain'],
   // create is the one account method that ignores the pin — list/get/update/remove all honour it
   ['POST', '/v1/accounts'],
 ]

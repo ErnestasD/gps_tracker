@@ -3,6 +3,14 @@ import type { PrismaClient } from '@prisma/client'
 import type { Actor, Scope } from '../scope.js'
 import type { AuditRepo } from './audit.js'
 
+/** Another tenant has already PROVED ownership of this domain (partial unique index). */
+export class SendingDomainConflictError extends Error {
+  constructor() {
+    super('sending domain already verified by another tenant')
+    this.name = 'SendingDomainConflictError'
+  }
+}
+
 /**
  * The address a white-label tenant's mail goes out AS (ADR-036, audit W-3).
  *
@@ -10,12 +18,18 @@ import type { AuditRepo } from './audit.js'
  * `verifiedAddress()` a total function: the send path has no sensible way to choose between two
  * sending identities, and more than one is a deliverability problem rather than a feature.
  *
- * ── Two reads, and they are not the same question ────────────────────────────────────────────────
- * `get` is the settings screen: it wants the row whatever state it is in, including a failed one, so
- * the tenant can see what went wrong. `verifiedAddress` is the SEND path: it wants an address only
- * when SES has actually authorised us to use it, and otherwise nothing — so the caller falls back to
- * the platform identity. Sending as a domain that has not signed for us fails DMARC and lands a
- * customer's alerts in spam, which is worse than the leak it was meant to fix.
+ * ── Ownership is NOT what SES tells us ───────────────────────────────────────────────────────────
+ * SES answers whether a DOMAIN published the DKIM records. It never says who asked. So a row also
+ * carries a CSPRNG `txtToken` the tenant publishes at `_orbetra-verify.<domain>`, exactly as an app
+ * domain does, and `markVerified` is guarded by a partial unique index over verified rows. Without
+ * both, a tenant could name a domain another tenant had verified, read back the identity SES already
+ * holds, and send DKIM-signed mail as somebody else's company.
+ *
+ * ── This repo does not serve the SEND path ───────────────────────────────────────────────────────
+ * The worker reads the address through `notify/senderAddress.ts` against the raw pool, next to its
+ * sibling `primaryDomain`, because it has no Scope. There is deliberately no second read here: one
+ * existed briefly, production never called it, and the API tests that asserted it were therefore
+ * testing nothing.
  */
 export interface TenantSendingDomain {
   id: string
@@ -23,6 +37,8 @@ export interface TenantSendingDomain {
   domain: string
   mailbox: string
   status: string
+  /** the CSPRNG ownership proof, published at `_orbetra-verify.<domain>` */
+  txtToken: string
   dkimTokens: string[]
   sesIdentity: string | null
   createdAt: Date
@@ -39,17 +55,17 @@ export interface TenantSendingDomainRepo {
    * clears `verifiedAt` — the new domain has proved nothing yet, and carrying the old flag over
    * would let mail go out as a domain that never signed for us.
    */
-  put(scope: Scope, actor: Actor, input: { domain: string; mailbox: string; dkimTokens: string[]; sesIdentity: string | null }): Promise<TenantSendingDomain>
-  /** SES reported SUCCESS. Idempotent — re-verifying an already verified row keeps the first time. */
+  put(scope: Scope, actor: Actor, input: { domain: string; mailbox: string; txtToken: string; dkimTokens: string[]; sesIdentity: string | null }): Promise<TenantSendingDomain>
+  /** Record the DKIM selectors SES returned, once ownership has been proved. */
+  setDkim(scope: Scope, actor: Actor, input: { dkimTokens: string[]; sesIdentity: string }): Promise<TenantSendingDomain | null>
+  /** Ownership proved AND SES reported SUCCESS. Idempotent — re-verifying keeps the first time.
+   *  @throws SendingDomainConflictError if another tenant proved this domain first. */
   markVerified(scope: Scope, actor: Actor): Promise<TenantSendingDomain | null>
   /** SES reported FAILED / TEMPORARY_FAILURE. Never clears the row: the tenant needs to see it. */
   markFailed(scope: Scope, actor: Actor): Promise<TenantSendingDomain | null>
   remove(scope: Scope, actor: Actor): Promise<boolean>
-  /**
-   * UNSCOPED by tenant id (the worker has no Scope): the address to send this tenant's mail AS, or
-   * null to use the platform identity. Reads `verifiedAt`, never `status` — see the note above.
-   */
-  verifiedAddress(tenantId: string): Promise<string | null>
+  /** Does any OTHER tenant's row still name this SES identity? Guards the teardown on delete. */
+  otherHolders(scope: Scope, sesIdentity: string): Promise<number>
 }
 
 export function createTenantSendingDomainRepo(prisma: PrismaClient, audit: AuditRepo): TenantSendingDomainRepo {
@@ -65,14 +81,17 @@ export function createTenantSendingDomainRepo(prisma: PrismaClient, audit: Audit
           tenantId: scope.tenantId,
           domain: input.domain,
           mailbox: input.mailbox,
+          txtToken: input.txtToken,
           dkimTokens: input.dkimTokens,
           sesIdentity: input.sesIdentity,
           status: 'pending',
         },
-        // verifiedAt back to null: the identity being described is a different one now
+        // verifiedAt AND the token back to fresh: the identity being described is a different one,
+        // and reusing a token already published under the old domain would prove nothing about this one
         update: {
           domain: input.domain,
           mailbox: input.mailbox,
+          txtToken: input.txtToken,
           dkimTokens: input.dkimTokens,
           sesIdentity: input.sesIdentity,
           status: 'pending',
@@ -93,9 +112,27 @@ export function createTenantSendingDomainRepo(prisma: PrismaClient, audit: Audit
       const before = await byTenant(scope.tenantId)
       if (before === null) return null
       if (before.verifiedAt !== null && before.status === 'verified') return before
+      let row: TenantSendingDomain
+      try {
+        // the partial unique index rejects this when another tenant proved the same domain first
+        row = await prisma.tenantSendingDomain.update({
+          where: { tenantId: scope.tenantId },
+          data: { status: 'verified', verifiedAt: before.verifiedAt ?? new Date() },
+        })
+      } catch (e) {
+        if (isUniqueViolation(e)) throw new SendingDomainConflictError()
+        throw e
+      }
+      await audit.record(scope, actor, { action: 'update', entity: 'sendingDomain', entityId: row.id, before, after: row })
+      return row
+    },
+
+    setDkim: async (scope, actor, input) => {
+      const before = await byTenant(scope.tenantId)
+      if (before === null) return null
       const row = await prisma.tenantSendingDomain.update({
         where: { tenantId: scope.tenantId },
-        data: { status: 'verified', verifiedAt: before.verifiedAt ?? new Date() },
+        data: { dkimTokens: input.dkimTokens, sesIdentity: input.sesIdentity },
       })
       await audit.record(scope, actor, { action: 'update', entity: 'sendingDomain', entityId: row.id, before, after: row })
       return row
@@ -120,14 +157,11 @@ export function createTenantSendingDomainRepo(prisma: PrismaClient, audit: Audit
       return true
     },
 
-    verifiedAddress: async (tenantId) => {
-      if (tenantId === '') return null
-      const row = await prisma.tenantSendingDomain.findUnique({
-        where: { tenantId },
-        select: { domain: true, mailbox: true, verifiedAt: true },
-      })
-      if (row === null || row.verifiedAt === null) return null
-      return `${row.mailbox}@${row.domain}`
-    },
+    otherHolders: (scope, sesIdentity) =>
+      prisma.tenantSendingDomain.count({ where: { sesIdentity, NOT: { tenantId: scope.tenantId } } }),
   }
 }
+
+// duck-typed Prisma unique-violation, the same shape tenantDomains uses
+const isUniqueViolation = (e: unknown): boolean =>
+  typeof e === 'object' && e !== null && (e as { code?: string }).code === 'P2002'

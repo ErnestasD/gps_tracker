@@ -38,20 +38,3 @@ export function dkimRecords(domain: string, tokens: readonly string[]): DkimReco
   const d = domain.trim().toLowerCase()
   return tokens.map((t) => ({ name: `${t}._domainkey.${d}`, value: `${t}.dkim.amazonses.com` }))
 }
-
-/**
- * Can this deployment create and read SES identities?
- *
- * The server today holds SES *SMTP* credentials, which can send but cannot manage identities — a
- * separate IAM user is required (`ses:CreateEmailIdentity`, `GetEmailIdentity`,
- * `DeleteEmailIdentity`). Absent it the feature is INERT rather than broken: the routes answer 503
- * and the settings screen says the feature is unavailable, exactly as the SMS gateway does without
- * Twilio (ADR-032). That is what lets this ship before the founder has provisioned the credentials.
- *
- * Deliberately does NOT check `MAIL_FROM`: a deployment can manage identities while its own sending
- * address is configured elsewhere, and conflating the two would make a missing platform mailbox look
- * like a missing IAM user.
- */
-export function sendingIdentityConfigured(env: NodeJS.ProcessEnv): boolean {
-  return Boolean(env['AWS_REGION'] && env['SES_ADMIN_ACCESS_KEY_ID'] && env['SES_ADMIN_SECRET_ACCESS_KEY'])
-}

@@ -1,4 +1,4 @@
-import { parseAssetPath, type Readiness, type SendingDomainRead } from '@orbetra/shared'
+import { parseAssetPath, type Readiness, type SendingDomainRead, type SendingDomainState } from '@orbetra/shared'
 
 import { getJson, mutate } from './client'
 import { getTheme, onThemeChange, type Theme } from './prefs'
@@ -606,7 +606,7 @@ export const getDomainDns = (id: string) => getJson<DomainDns>(`/v1/tenant/domai
  * `null` is a normal answer, not an error: every tenant starts without one, and mail keeps going out
  * on the platform address until SES has verified theirs. The screen has to render that state calmly.
  */
-export const getSendingDomain = () => getJson<SendingDomainRead | null>('/v1/tenant/sending-domain')
+export const getSendingDomain = () => getJson<SendingDomainState>('/v1/tenant/sending-domain')
 export const setSendingDomain = (domain: string, mailbox: string) =>
   mutate<SendingDomainRead>('POST', '/v1/tenant/sending-domain', { domain, mailbox })
 /** Ask SES whether the DKIM records have appeared. Returns the row either way — a still-pending

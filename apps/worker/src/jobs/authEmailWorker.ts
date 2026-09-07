@@ -214,6 +214,20 @@ export async function sendAuthEmail(deps: Pick<AuthEmailWorkerDeps, 'pool' | 'tr
   // origin the links just moved to is stamped onto the image too. Without this a tenant who uploaded
   // their logo would keep it everywhere except in mail, which is precisely where nobody would notice.
   const branded = branding === undefined ? undefined : absolutizeBrandAssets(branding, host !== null ? `https://${host}` : originOf(linkOf(job)))
+  /**
+   * Is this message OURS rather than the reseller's? (audit W-3 carve-out)
+   *
+   * The lapse ladder is us telling our customer that our invoice is unpaid and their fleet is about
+   * to be disconnected. Dressing it in their own brand — worse, DKIM-signed as their own domain once
+   * ADR-036 is live — misattributes our message and strips it of the one property it needs, which is
+   * being believed. It is the same reasoning the `partner` branch above acts on, and the same trap:
+   * everything else on this path IS the reseller's mail, so the default is right and the exception
+   * has to be named.
+   *
+   * The BODY still carries their branding, deliberately: the reseller reads it inside their own
+   * dashboard's world. Only the envelope stays ours.
+   */
+  const oursToSend = job.kind === 'lapse'
   const { subject, text, html } =
     job.kind === 'signup-exists'
       ? renderSignupExistsEmail({ loginUrl: on(job.loginUrl), resetUrl: on(job.resetUrl), locale: job.locale, brand, branding: branded, tenantName, whiteLabel })
@@ -231,10 +245,10 @@ export async function sendAuthEmail(deps: Pick<AuthEmailWorkerDeps, 'pool' | 'tr
     // The inbox row is the first thing the recipient reads, and until now it said Orbetra on every
     // reseller's mail. `ownName` and not `brand`: `brand` falls back to the platform name, which is
     // right inside a message we own and wrong as the sender of a reseller's.
-    fromName: whiteLabel ? ownName : undefined,
+    fromName: whiteLabel && !oursToSend ? ownName : undefined,
     // …and the address beside it, once they have proved a sending domain (ADR-036). Same gate as the
     // name: a Direct customer bought OUR product, so our identity is the correct one for them.
-    fromAddress: whiteLabel ? (await sendingAddress(deps.pool, tenantId)) ?? undefined : undefined,
+    fromAddress: whiteLabel && !oursToSend ? (await sendingAddress(deps.pool, tenantId)) ?? undefined : undefined,
   })
   return true
 }

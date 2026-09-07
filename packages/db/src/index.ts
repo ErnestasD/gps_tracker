@@ -65,7 +65,7 @@ export { createSuppressionRepo, type SuppressionRepo } from './repos/suppression
 export { createAffiliateRepo, AffiliateConflictError, DealDomainTakenError, DEAL_WINDOW_DAYS, type AffiliateRepo, type AffiliateCreate, type AffiliateUpdate, type CommissionAccrual, type PaidInvoice, type DealCreateInput, type DomainStanding } from './repos/affiliates.js'
 export { type TenantDomainRepo, DomainConflictError, DomainDuplicateError, DomainLimitError, MAX_DOMAINS_PER_TENANT } from './repos/tenantDomains.js'
 export { type TenantAssetRepo, type BrandAssetMeta, type BrandAssetBytes } from './repos/tenantAssets.js'
-export { type TenantSendingDomainRepo, type TenantSendingDomain } from './repos/tenantSendingDomains.js'
+export { type TenantSendingDomainRepo, type TenantSendingDomain, SendingDomainConflictError } from './repos/tenantSendingDomains.js'
 export { type AuditRepo } from './repos/audit.js'
 
 export { dbErrorHttp } from './errors.js'

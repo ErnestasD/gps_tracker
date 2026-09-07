@@ -2099,6 +2099,7 @@
       "pending": "Oczekiwanie na DNS",
       "verified": "Zweryfikowana",
       "failed": "Niezweryfikowana"
-    }
+    },
+    "ownershipNote": "Dodaj ten rekord TXT do swojego DNS i naciśnij Sprawdź. Potwierdza on, że domena jest Twoja — dopóki się nie pojawi, nic nie jest tworzone w Twoim imieniu. Twoje wiadomości przez cały ten czas nadal wychodzą z naszego adresu."
   }
 }

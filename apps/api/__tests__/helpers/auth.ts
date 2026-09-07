@@ -72,8 +72,9 @@ export function fakeDb(users: AuthUserRow[] = []): Db {
     // SES and have no sensible result to invent.
     tenantSendingDomains: {
       get: () => Promise.resolve(null),
-      verifiedAddress: () => Promise.resolve(null),
+      otherHolders: () => Promise.resolve(0),
       put: notImpl,
+      setDkim: notImpl,
       markVerified: notImpl,
       markFailed: notImpl,
       remove: notImpl,

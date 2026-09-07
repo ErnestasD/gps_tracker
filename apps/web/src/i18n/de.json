@@ -2079,6 +2079,7 @@
       "pending": "Warten auf DNS",
       "verified": "Bestätigt",
       "failed": "Nicht bestätigt"
-    }
+    },
+    "ownershipNote": "Tragen Sie diesen TXT-Eintrag in Ihr DNS ein und klicken Sie auf Prüfen. Er belegt, dass die Domain Ihnen gehört — bis er auflöst, wird in Ihrem Namen nichts angelegt. Ihre Post geht die ganze Zeit weiter über unsere Adresse raus."
   }
 }

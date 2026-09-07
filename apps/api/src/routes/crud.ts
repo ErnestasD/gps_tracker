@@ -5,7 +5,7 @@ import type { Redis } from 'ioredis'
 import { z } from 'zod'
 
 import { loadDictionary, parseMultiplier } from '@orbetra/codec'
-import { AccountHasUsersError, AffiliateConflictError, clampTripsTake, DealDomainTakenError, TenantHasCommissionsError, DomainConflictError, DomainDuplicateError, DomainLimitError, DriverIbuttonConflictError, DriverNotInScopeError, DuplicateImeiError, GeofenceInvalidError, GeofenceTooLargeError, GeofenceTooComplexError, GeofenceLimitError, MAX_DOMAINS_PER_TENANT, readCanLatest, readFuelSeries, readHealthSeries, readOdometersKm, readLatestTelemetry, readPositions, toDeviceId, type Db, type Pool, type TenantSendingDomain } from '@orbetra/db'
+import { AccountHasUsersError, AffiliateConflictError, clampTripsTake, DealDomainTakenError, TenantHasCommissionsError, DomainConflictError, DomainDuplicateError, DomainLimitError, DriverIbuttonConflictError, DriverNotInScopeError, DuplicateImeiError, GeofenceInvalidError, GeofenceTooLargeError, GeofenceTooComplexError, GeofenceLimitError, MAX_DOMAINS_PER_TENANT, readCanLatest, readFuelSeries, readHealthSeries, readOdometersKm, readLatestTelemetry, readPositions, toDeviceId, SendingDomainConflictError, type Db, type Pool, type TenantSendingDomain } from '@orbetra/db'
 import {
   ROLES,
   accountCreateSchema,
@@ -192,6 +192,9 @@ function sendingDomainView(row: TenantSendingDomain): SendingDomainRead {
     mailbox: row.mailbox,
     address: sendingAddress(row.domain, row.mailbox),
     status: row.status === 'verified' || row.status === 'failed' ? row.status : 'pending',
+    // The ownership record comes FIRST and alone, because until it resolves there are no DKIM
+    // selectors to show — SES is not asked until this tenant has proved the zone is theirs.
+    ownershipRecord: { name: verifyHost(row.domain), value: row.txtToken },
     dkimRecords: dkimRecords(row.domain, row.dkimTokens),
     verifiedAt: row.verifiedAt === null ? null : row.verifiedAt.toISOString(),
   }
@@ -2686,22 +2689,35 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
      * `hello@orbetra.com` on every activation, every password reset and every alert, because
      * `MAIL_FROM` is one process-wide value that every tenant borrowed.
      *
-     * Four routes on a settings screen, never on the send path: SES accepts any `From` on an
-     * identity it has verified, so this is one header, not a second delivery path.
+     * ── TWO proofs, and SES supplies only one of them ────────────────────────────────────────────
+     * SES tells us a DOMAIN published our DKIM records. It never tells us WHO asked. A first cut of
+     * this feature trusted it alone, and the hole was two calls wide: name a domain another tenant
+     * had already verified, let `CreateEmailIdentity` come back AlreadyExists, read the identity SES
+     * already holds, and start sending DKIM-signed DMARC-aligned mail as their company — to any
+     * address, since rule channels and report recipients are free text. So ownership is proved the
+     * way it already is for app domains: a CSPRNG token at `_orbetra-verify.<domain>`, published by
+     * whoever controls the zone. Verify checks OURS first and only then asks SES.
      *
-     * ALL FOUR answer 503 when the deployment holds no identity-management credentials. The server
-     * has SES *SMTP* credentials, which can send but cannot create identities, so this stays inert —
-     * not broken — until the founder provisions the IAM user. The settings screen reads the same
-     * signal and says the feature is unavailable, exactly as the SMS gateway does without Twilio.
+     * ── Never our own zone ───────────────────────────────────────────────────────────────────────
+     * `MAIL_FROM` is a verified identity in this same account, so without the platform-domain refusal
+     * a reseller could claim it and send as `security@<our domain>`.
+     *
+     * ALL FOUR answer 503 when the deployment holds no identity-management credentials — including
+     * DELETE, which would otherwise let a tenant destroy a working identity it could not recreate.
+     * The server has SES *SMTP* credentials, which can send but cannot create identities, so this
+     * stays inert — not broken — until the founder provisions the IAM user. The GET reports
+     * `configured` so the screen says so BEFORE the reseller fills in a form, the way the SMS
+     * gateway reports `smsEnabled`.
      */
     { method: 'get', path: '/v1/tenant/sending-domain', scopeClass: 'tenant', entity: 'sendingDomain', shape: 'collection', entitlement: 'customDomains',
       handler: async (c) => {
         if (!tenantWide(c)) return problem(c, 403, 'Forbidden', 'the sending domain is tenant-wide')
         const row = await db.tenantSendingDomains.get(scopeOf(auth(c)))
-        // 200 with null rather than 404: "this tenant has not set one" is the ordinary state, and a
-        // settings screen that has to treat its own empty case as an error renders a red box on
-        // first visit.
-        return json(c, row === null ? null : sendingDomainView(row))
+        // 200 with a null identity rather than 404: "this tenant has not set one" is the ordinary
+        // state, and a settings screen that treats its own empty case as an error renders a red box
+        // on first visit. `configured` rides along so the card can say the feature is unavailable
+        // before asking for anything.
+        return json(c, { configured: deps.ses !== undefined, identity: row === null ? null : sendingDomainView(row) })
       } },
     { method: 'post', path: '/v1/tenant/sending-domain', scopeClass: 'tenant', entity: 'sendingDomain', shape: 'collection', entitlement: 'customDomains',
       handler: async (c) => {
@@ -2712,19 +2728,29 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
         const a = auth(c)
         const domain = data.domain.toLowerCase()
         const mailbox = data.mailbox.toLowerCase()
-        let identity: Awaited<ReturnType<SesIdentityGateway['create']>>
-        try {
-          identity = await deps.ses.create(domain)
-        } catch (err) {
-          // A misconfigured IAM policy and an AWS outage look the same from here, and both are OURS,
-          // not the tenant's. 502 rather than 400 so the screen does not tell them to check a
-          // hostname that was never the problem.
-          console.error('SES identity create failed', domain, err instanceof Error ? err.message : String(err))
-          return problem(c, 502, 'Bad Gateway', 'could not create the sending identity')
+        // our own zone is never a tenant's to send from — see the note above
+        if (isUnderPlatformDomain(domain, deps.platformDomain)) {
+          return problem(c, 400, 'Bad Request', 'that domain belongs to the platform')
         }
+        // No SES call here. The identity is created only once ownership is proved, so a tenant cannot
+        // pre-register (or squat) identities in our account for domains they do not control, and a
+        // mistyped domain costs nothing to abandon.
+        const previous = await db.tenantSendingDomains.get(scopeOf(a))
         const row = await db.tenantSendingDomains.put(scopeOf(a), { userId: a.userId }, {
-          domain, mailbox, dkimTokens: identity.dkimTokens, sesIdentity: domain,
+          domain, mailbox, txtToken: newTxtToken(), dkimTokens: [], sesIdentity: null,
         })
+        // A replaced domain leaves an identity behind in our SES account. Unclaimed identities are
+        // both a quota leak (10 000 per account, and this route has no cap of its own) and something
+        // a later bug could adopt, so the old one goes as soon as the new row is committed.
+        if (deps.ses !== undefined && previous?.sesIdentity != null && previous.sesIdentity !== domain) {
+          if ((await db.tenantSendingDomains.otherHolders(scopeOf(a), previous.sesIdentity)) === 0) {
+            try {
+              await deps.ses.remove(previous.sesIdentity)
+            } catch (err) {
+              console.error('SES identity cleanup failed', previous.sesIdentity, err instanceof Error ? err.message : String(err))
+            }
+          }
+        }
         return json(c, sendingDomainView(row), 201)
       } },
     { method: 'post', path: '/v1/tenant/sending-domain/verify', scopeClass: 'tenant', entity: 'sendingDomain', shape: 'collection', entitlement: 'customDomains',
@@ -2732,8 +2758,26 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
         if (!tenantWide(c)) return problem(c, 403, 'Forbidden', 'the sending domain is tenant-wide')
         if (deps.ses === undefined) return problem(c, 503, 'Service Unavailable', 'sending domains are not configured')
         const a = auth(c)
-        const row = await db.tenantSendingDomains.get(scopeOf(a))
+        let row = await db.tenantSendingDomains.get(scopeOf(a))
         if (row === null) return problem(c, 404, 'Not Found')
+        // OURS first, always. This is the proof that THIS tenant controls the zone; SES's answer is
+        // about the domain and would be identical for an impostor.
+        if (!(await verifyDomainTxt(deps.resolveTxt, row.domain, row.txtToken))) {
+          return problem(c, 400, 'Not Verified', 'ownership TXT record not found — check DNS and try again')
+        }
+        if (row.sesIdentity === null) {
+          // ownership just proved: NOW create the identity and hand back the DKIM records
+          try {
+            const created = await deps.ses.create(row.domain)
+            row = (await db.tenantSendingDomains.setDkim(scopeOf(a), { userId: a.userId }, {
+              dkimTokens: created.dkimTokens, sesIdentity: row.domain,
+            })) ?? row
+          } catch (err) {
+            console.error('SES identity create failed', row.domain, err instanceof Error ? err.message : String(err))
+            return problem(c, 502, 'Bad Gateway', 'could not create the sending identity')
+          }
+          return json(c, sendingDomainView(row))
+        }
         let identity: Awaited<ReturnType<SesIdentityGateway['get']>>
         try {
           identity = await deps.ses.get(row.domain)
@@ -2745,25 +2789,39 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
         // SES still retrying, records genuinely wrong — leaves mail on the platform identity, which
         // keeps arriving. An unverified sending domain must never become an unsent alert.
         if (identity?.status === 'verified') {
-          return json(c, sendingDomainView((await db.tenantSendingDomains.markVerified(scopeOf(a), { userId: a.userId }))!))
+          try {
+            const done = await db.tenantSendingDomains.markVerified(scopeOf(a), { userId: a.userId })
+            return done === null ? problem(c, 404, 'Not Found') : json(c, sendingDomainView(done))
+          } catch (err) {
+            if (err instanceof SendingDomainConflictError) return problem(c, 409, 'Conflict', 'sending domain already verified by another tenant')
+            throw err
+          }
         }
         if (identity?.status === 'failed') {
-          return json(c, sendingDomainView((await db.tenantSendingDomains.markFailed(scopeOf(a), { userId: a.userId }))!))
+          const done = await db.tenantSendingDomains.markFailed(scopeOf(a), { userId: a.userId })
+          return done === null ? problem(c, 404, 'Not Found') : json(c, sendingDomainView(done))
         }
         return json(c, sendingDomainView(row))
       } },
     { method: 'delete', path: '/v1/tenant/sending-domain', scopeClass: 'tenant', entity: 'sendingDomain', shape: 'collection', entitlement: 'customDomains',
       handler: async (c) => {
         if (!tenantWide(c)) return problem(c, 403, 'Forbidden', 'the sending domain is tenant-wide')
+        // 503 here too: without the gateway the identity would survive as an orphan while the row —
+        // which the tenant could not then recreate, POST being 503 — is gone for good.
+        if (deps.ses === undefined) return problem(c, 503, 'Service Unavailable', 'sending domains are not configured')
         const a = auth(c)
         const row = await db.tenantSendingDomains.get(scopeOf(a))
         if (row === null) return problem(c, 404, 'Not Found')
         // The ROW goes first. If the SES call fails we have still stopped sending as that domain,
         // which is the half that matters: a leftover identity in our account costs nothing and can
         // be swept, while a row pointing at an identity we just deleted would sign nothing and drop
-        // the tenant's mail into spam. Delete-then-detach would have that backwards.
+        // the tenant's mail into spam.
         await db.tenantSendingDomains.remove(scopeOf(a), { userId: a.userId })
-        if (deps.ses !== undefined && row.sesIdentity !== null) {
+        // …but only tear the identity down if nobody else is standing on it. Two tenants can hold
+        // pending rows for one domain (only VERIFIED rows are exclusive), and removing the shared
+        // identity would stop the other tenant's mail — the exact "unverified becomes unsent" failure
+        // this feature refuses to cause, arriving from a third party.
+        if (row.sesIdentity !== null && (await db.tenantSendingDomains.otherHolders(scopeOf(a), row.sesIdentity)) === 0) {
           try {
             await deps.ses.remove(row.sesIdentity)
           } catch (err) {

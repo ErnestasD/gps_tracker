@@ -1,9 +1,18 @@
 # ADR-036 — A white-label tenant sends mail from their OWN domain
 
-Status: **accepted** (2026-08-07) — **implemented 2026-09-07**, as decided below and with no
-deviation. `tenant_sending_domains` holds one identity per tenant, four routes on the branding screen
-create and verify it, and the three tenant-facing send paths (alerts, scheduled reports, auth mail)
-carry the address. Supersedes nothing. Related: E03-5 (custom domains), ADR-023 (SMTP transport),
+Status: **accepted** (2026-08-07) — **implemented 2026-09-07**. `tenant_sending_domains` holds one
+identity per tenant, four routes on the branding screen create and verify it, and the three
+tenant-facing send paths (alerts, scheduled reports, auth mail) carry the address.
+
+**One thing this ADR did not say, and the implementation needs.** The decision below is "verify the
+tenant's domain as a sending identity in OUR SES account", which is right — but SES verifies a
+DOMAIN and never reports who asked for it. A first cut trusted it alone and the hole was two calls
+wide: name a domain another tenant had verified, let `CreateEmailIdentity` return AlreadyExists, read
+back the identity SES already holds, and send DKIM-signed DMARC-aligned mail as their company to any
+address. So the shipped flow proves ownership FIRST, with the same `_orbetra-verify` TXT the app
+domains use, and only then asks SES; a partial unique index over verified rows is the second lock.
+Our own platform domain is refused outright, because `MAIL_FROM` is an identity in this same account.
+Caught by an adversarial review before merge. Supersedes nothing. Related: E03-5 (custom domains), ADR-023 (SMTP transport),
 ROADMAP-post-v1 item 13, audit W-3.
 
 **It ships INERT.** The IAM user this needs does not exist yet, so `sesIdentityConfigFromEnv()`
@@ -70,9 +79,11 @@ The same shape as the custom-domain flow they have already been through, deliber
 records, click Verify.
 
 1. Settings → Branding → **Sending domain**: type `klientas.lt`, choose the address (`alertai@`).
-2. We create the SES identity and show **three CNAME records** (DKIM) plus one optional MAIL FROM
-   record. They publish them.
-3. Click Verify. SES reports `SUCCESS` and we store the address.
+2. We show **one TXT record** proving the domain is theirs. Nothing is created in our account until
+   it resolves — that is what stops anyone else naming their domain here.
+3. Click Verify. Ownership holds, so we create the SES identity and show **three CNAME records**
+   (DKIM). They publish those too.
+4. Click Verify again. SES reports `SUCCESS` and we store the address.
 4. Every message for that tenant now goes out as `Fleet Klientas <alertai@klientas.lt>`.
 
 Until step 3 completes, mail keeps going out on the platform identity — an unverified domain must
