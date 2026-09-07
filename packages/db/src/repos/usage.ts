@@ -29,6 +29,7 @@ export interface AccountUsageRow {
 }
 /** What Stripe has been told for one tenant-day. `reported` is CUMULATIVE, not the last delta. */
 export interface OverageReport {
+  /** the CONFIRMED cumulative overage — submitted to Stripe AND durably recorded here. */
   reported: number
   /** the plan's included-device allowance this was computed against — recorded so a later run can see
    *  what the day was actually settled under. */
@@ -36,6 +37,12 @@ export interface OverageReport {
   /** the base price the day was settled under. A later run freezes the day when THIS changes (the
    *  plan changed under it), not when `included` changes (STRIPE_INCLUDED was corrected). */
   priceId: string | null
+  /** audit F1 outbox: the cumulative overage of an IN-FLIGHT submission (null = none pending). When
+   *  set, a submission from `reported` → `pendingTarget` was written here BEFORE the Stripe call and
+   *  may or may not have reached Stripe; the next run re-drives it with `pendingIdentifier`. */
+  pendingTarget?: number | null
+  /** the Stripe meter identifier of that in-flight submission — re-sent verbatim so Stripe dedups it. */
+  pendingIdentifier?: string | null
 }
 export interface UsageRangeOpts {
   from?: string
@@ -54,9 +61,15 @@ export interface UsageRepo {
    * there is no request identity behind it (same shape as `listActiveSubscribers`).
    */
   reportedOverage(tenantId: string, opts: UsageRangeOpts): Promise<Map<string, OverageReport>>
-  /** Record what Stripe has now been told about (tenant, day), with the allowance it was computed
-   *  against. Idempotent upsert; billing-job only. */
+  /** Record a SETTLED (no in-flight submission) day — the under-allowance seed and the confirmed
+   *  legacy path. Idempotent upsert; clears any pending marker. Billing-job only. */
   recordOverageReport(tenantId: string, day: string, report: OverageReport): Promise<void>
+  /** F1 outbox step 1: mark a submission from `prevReported` → `pendingTarget` as IN FLIGHT, written
+   *  BEFORE the Stripe call. `reported` stays `prevReported` until confirmed. Billing-job only. */
+  beginOverageReport(tenantId: string, day: string, opts: { prevReported: number; pendingTarget: number; pendingIdentifier: string; included: number | null; priceId: string | null }): Promise<void>
+  /** F1 outbox step 2: the submission reached Stripe (or was re-driven) — advance `reported` to
+   *  `confirmed` and clear the pending marker. Billing-job only. */
+  confirmOverageReport(tenantId: string, day: string, confirmed: number): Promise<void>
 }
 
 const dayWhere = (opts: UsageRangeOpts) => ({
@@ -107,9 +120,9 @@ export function createUsageRepo(prisma: PrismaClient): UsageRepo {
       const day = dayWhere(opts)
       const rows = await prisma.usageReport.findMany({
         where: { tenantId, ...(Object.keys(day).length > 0 ? { day } : {}) },
-        select: { day: true, reported: true, included: true, priceId: true },
+        select: { day: true, reported: true, included: true, priceId: true, pendingTarget: true, pendingIdentifier: true },
       })
-      return new Map(rows.map((r) => [r.day.toISOString().slice(0, 10), { reported: r.reported, included: r.included, priceId: r.priceId }]))
+      return new Map(rows.map((r) => [r.day.toISOString().slice(0, 10), { reported: r.reported, included: r.included, priceId: r.priceId, pendingTarget: r.pendingTarget, pendingIdentifier: r.pendingIdentifier }]))
     },
     recordOverageReport: async (tenantId, day, report) => {
       // guarded here rather than at the call site: a malformed day would otherwise reach Prisma as
@@ -118,8 +131,31 @@ export function createUsageRepo(prisma: PrismaClient): UsageRepo {
       const at = new Date(day)
       await prisma.usageReport.upsert({
         where: { tenantId_day: { tenantId, day: at } },
-        create: { tenantId, day: at, reported: report.reported, included: report.included, priceId: report.priceId },
-        update: { reported: report.reported, included: report.included, priceId: report.priceId, reportedAt: new Date() },
+        // a settled row carries no pending marker (explicit null so a stale one can never linger)
+        create: { tenantId, day: at, reported: report.reported, included: report.included, priceId: report.priceId, pendingTarget: null, pendingIdentifier: null },
+        update: { reported: report.reported, included: report.included, priceId: report.priceId, pendingTarget: null, pendingIdentifier: null, reportedAt: new Date() },
+      })
+    },
+    beginOverageReport: async (tenantId, day, opts) => {
+      if (!isPgSafeDate(day)) throw new Error(`beginOverageReport: unusable day ${JSON.stringify(day)}`)
+      const at = new Date(day)
+      await prisma.usageReport.upsert({
+        where: { tenantId_day: { tenantId, day: at } },
+        // a brand-new day starts at prevReported (0 for the first submission); the pending marker
+        // records the target + identifier BEFORE Stripe is called
+        create: { tenantId, day: at, reported: opts.prevReported, included: opts.included, priceId: opts.priceId, pendingTarget: opts.pendingTarget, pendingIdentifier: opts.pendingIdentifier },
+        // reported is DELIBERATELY untouched — it only advances on confirm, so a crash between begin
+        // and confirm leaves the ledger at the last confirmed value, and the pending is re-driven
+        update: { included: opts.included, priceId: opts.priceId, pendingTarget: opts.pendingTarget, pendingIdentifier: opts.pendingIdentifier },
+      })
+    },
+    confirmOverageReport: async (tenantId, day, confirmed) => {
+      if (!isPgSafeDate(day)) throw new Error(`confirmOverageReport: unusable day ${JSON.stringify(day)}`)
+      const at = new Date(day)
+      // the row exists (begin wrote it); advance reported and clear the pending marker atomically
+      await prisma.usageReport.update({
+        where: { tenantId_day: { tenantId, day: at } },
+        data: { reported: confirmed, pendingTarget: null, pendingIdentifier: null, reportedAt: new Date() },
       })
     },
   }

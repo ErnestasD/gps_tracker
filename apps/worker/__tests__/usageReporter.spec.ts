@@ -68,14 +68,14 @@ const port = (sent: Sent[]): StripeUsagePort => ({
   reportUsage: (o) => { sent.push({ customerId: o.customerId, value: o.value, identifier: o.identifier, timestampS: o.timestampS }); return Promise.resolve() },
 })
 
-type Sub = { tenantId: string; stripeCustomerId: string; subscriptionPriceId: string | null; plan: string; billableUntil: Date | null }
+type Sub = { tenantId: string; stripeCustomerId: string; subscriptionPriceId: string | null; plan: string; billableUntil: Date | null; priceEffectiveAt?: Date | null }
 
 /**
  * A fake Db exposing only what the reporter uses, with a REAL report log: `recordOverageReport`
  * writes into the same map `reportedOverage` reads, so the delta arithmetic is exercised end to end
  * across successive runs rather than mocked away.
  */
-type Report = { reported: number; included: number | null; priceId: string | null }
+type Report = { reported: number; included: number | null; priceId: string | null; pendingTarget?: number | null; pendingIdentifier?: string | null }
 
 function fakeDb(subs: Sub[], usage: Record<string, Record<string, number>>, log: Map<string, Report> = new Map()) {
   const db = {
@@ -83,7 +83,7 @@ function fakeDb(subs: Sub[], usage: Record<string, Record<string, number>>, log:
       // mirrors the repo: lapsed tenants appear only when the caller asks for a window, and carry
       // the instant they lapsed
       listActiveSubscribers: (lapsedSince?: Date) =>
-        Promise.resolve(subs.filter((s) => s.billableUntil === null || (lapsedSince !== undefined && s.billableUntil >= lapsedSince))),
+        Promise.resolve(subs.filter((s) => s.billableUntil === null || (lapsedSince !== undefined && s.billableUntil >= lapsedSince)).map((s) => ({ ...s, priceEffectiveAt: s.priceEffectiveAt ?? null }))),
     },
     usage: {
       tenantSummary: (scope: { tenantId: string }, opts: { from: string; to: string }) =>
@@ -101,7 +101,20 @@ function fakeDb(subs: Sub[], usage: Record<string, Record<string, number>>, log:
         return Promise.resolve(out)
       },
       recordOverageReport: (tenantId: string, day: string, report: Report) => {
-        log.set(`${tenantId}|${day}`, { ...report }) // the Prisma upsert stores a copy, not a reference
+        log.set(`${tenantId}|${day}`, { ...report, pendingTarget: null, pendingIdentifier: null }) // settled: no pending
+        return Promise.resolve()
+      },
+      // F1 outbox: begin writes the pending marker (reported stays prevReported); confirm advances it
+      beginOverageReport: (tenantId: string, day: string, opts: { prevReported: number; pendingTarget: number; pendingIdentifier: string; included: number | null; priceId: string | null }) => {
+        const key = `${tenantId}|${day}`
+        const existing = log.get(key)
+        log.set(key, { reported: existing?.reported ?? opts.prevReported, included: opts.included, priceId: opts.priceId, pendingTarget: opts.pendingTarget, pendingIdentifier: opts.pendingIdentifier })
+        return Promise.resolve()
+      },
+      confirmOverageReport: (tenantId: string, day: string, confirmed: number) => {
+        const key = `${tenantId}|${day}`
+        const existing = log.get(key)
+        log.set(key, { reported: confirmed, included: existing?.included ?? null, priceId: existing?.priceId ?? null, pendingTarget: null, pendingIdentifier: null })
         return Promise.resolve()
       },
     },
@@ -110,7 +123,7 @@ function fakeDb(subs: Sub[], usage: Record<string, Record<string, number>>, log:
 }
 
 const DAYS = ['2026-07-11', '2026-07-12']
-const tsp = (tenantId: string, cus: string, billableUntil: Date | null = null): Sub => ({ tenantId, stripeCustomerId: cus, subscriptionPriceId: 'price_tsp', plan: 'tsp_grow', billableUntil })
+const tsp = (tenantId: string, cus: string, billableUntil: Date | null = null): Sub => ({ tenantId, stripeCustomerId: cus, subscriptionPriceId: 'price_tsp', plan: 'tsp_grow', billableUntil, priceEffectiveAt: null })
 
 describe('reportDailyOverage', () => {
   it('reports only TSP tenants over their allowance, per day, with the excess device count', async () => {
@@ -202,10 +215,16 @@ describe('reportDailyOverage', () => {
     }
     const { db, log } = fakeDb([tsp('t1', 'cus_1')], { t1: { '2026-07-11': 205 } })
     await expect(reportDailyOverage({ db, stripe: flaky }, DAYS)).rejects.toThrow(/1\/1 tenant/)
-    expect(log.size).toBe(0) // nothing recorded → nothing lost
+    // F1 outbox: the PENDING marker is written before the Stripe call, but `reported` is NOT advanced,
+    // so the day is not billed — and the marker is exactly what lets the retry re-drive it safely
+    const pending = log.get('t1|2026-07-11')
+    expect(pending?.reported).toBe(0)
+    expect(pending?.pendingTarget).toBe(5)
     fail = false
     await reportDailyOverage({ db, stripe: flaky }, DAYS)
     expect(sent.map((s) => s.value)).toEqual([5])
+    expect(log.get('t1|2026-07-11')?.reported).toBe(5) // now confirmed
+    expect(log.get('t1|2026-07-11')?.pendingTarget).toBeNull() // pending cleared
   })
 
   it('one tenant failure does NOT skip the others, and rethrows so BullMQ retries', async () => {
@@ -259,25 +278,60 @@ describe('reportDailyOverage', () => {
     expect(sent.map((x) => x.value).reduce((a, b) => a + b)).toBe(12) // 212 − 200, billed exactly once
   })
 
-  it('a retry that finds MORE usage gets a NEW identifier — Stripe must not dedupe the difference', async () => {
-    // the failure this replaced: the identifier carried only `prev`, so a retry whose `over` had
-    // grown reused the identifier of the smaller submission. Stripe deduped the whole event, the
-    // code recorded the larger value as billed, and the difference vanished.
+  it('audit F2: a no-row day BEFORE the current price took effect is FROZEN, not recomputed against the new allowance', async () => {
+    const sent: Sent[] = []
+    // the price took effect on the 12th (a downgrade), so the 11th was under an OLDER, larger plan.
+    // A missed reporter cycle left the 11th with NO row; recomputing it against the CURRENT allowance
+    // would bill a day the old plan covered. It must be frozen instead.
+    const sub: Sub = { tenantId: 't1', stripeCustomerId: 'cus_1', subscriptionPriceId: 'price_tsp', plan: 'tsp_grow', billableUntil: null, priceEffectiveAt: new Date('2026-07-12T00:00:00Z') }
+    const { db, log } = fakeDb([sub], { t1: { '2026-07-11': 500, '2026-07-12': 500 } }) // 500 > 200 included, both days
+    const res = await reportDailyOverage({ db, stripe: port(sent) }, DAYS)
+    // the 11th (before the effective start, no row) is FROZEN — not billed, not recorded/recomputed
+    expect(sent.find((x) => x.identifier.includes('2026-07-11'))).toBeUndefined()
+    expect(log.get('t1|2026-07-11')).toBeUndefined()
+    expect(res.frozenNoRowDays).toBe(1)
+    // the 12th (on/after the effective start) bills normally against the current allowance: 500-200
+    expect(sent.find((x) => x.identifier.includes('2026-07-12'))?.value).toBe(300)
+  })
+
+  it('audit F2 (mirror): a no-row day is billed normally when there is NO recorded price change (effective null)', async () => {
+    const sent: Sent[] = []
+    const { db } = fakeDb([tsp('t1', 'cus_1')], { t1: { '2026-07-11': 500 } }) // tsp() has priceEffectiveAt null
+    await reportDailyOverage({ db, stripe: port(sent) }, DAYS)
+    // no plan change ever recorded → the day is under the only allowance there is → billed 500-200
+    expect(sent.find((x) => x.identifier.includes('2026-07-11'))?.value).toBe(300)
+  })
+
+  it('audit F1: a submit that LANDED but was not confirmed, then more usage, is not double-billed (outbox re-drive)', async () => {
+    // The old failure mode: the confirming write failed AFTER Stripe accepted, then usage grew, and
+    // the retry sent a NEW identifier (0-5 then 0-8) so Stripe's dedup did not collapse it — the
+    // additive meter held 5+8=13 for a true 8. The outbox fixes it: the pending marker is written
+    // BEFORE the submit, so the retry re-drives the SAME identifier (Stripe dedups it) and bills only
+    // the growth as a fresh segment.
     const sent: Sent[] = []
     const usage = { t1: { '2026-07-11': 205 } as Record<string, number> }
-    let failRecord = true
-    const { db, log } = fakeDb([tsp('t1', 'cus_1')], usage)
-    const realRecord = (db.usage as unknown as { recordOverageReport: (t: string, d: string, r: { reported: number; included: number | null }) => Promise<void> }).recordOverageReport
-    ;(db.usage as unknown as { recordOverageReport: unknown }).recordOverageReport = (t: string, d: string, r: { reported: number; included: number | null }) => {
-      if (failRecord) return Promise.reject(new Error('db blip'))
-      return realRecord(t, d, r)
+    let failConfirm = true
+    const { db } = fakeDb([tsp('t1', 'cus_1')], usage)
+    const realConfirm = (db.usage as unknown as { confirmOverageReport: (t: string, d: string, c: number) => Promise<void> }).confirmOverageReport
+    ;(db.usage as unknown as { confirmOverageReport: unknown }).confirmOverageReport = (t: string, d: string, c: number) => {
+      if (failConfirm) return Promise.reject(new Error('db blip')) // Stripe already got the submit; the confirm is lost
+      return realConfirm(t, d, c)
     }
+    // run 1: submit 0-5 LANDS at Stripe, then the confirm throws → the day stays pending at 0→5
     await expect(reportDailyOverage({ db, stripe: port(sent) }, DAYS)).rejects.toThrow()
-    expect(log.size).toBe(0)
     usage.t1['2026-07-11'] = 208 // three more device-days land before the retry
-    failRecord = false
+    failConfirm = false
+    // run 2: re-drive the pending 0-5 (SAME identifier — Stripe dedups the already-applied 5), confirm
+    // it, THEN bill the growth as a new segment 5-8 (value 3). Net billed to Stripe = 5 + 3 = 8.
     await reportDailyOverage({ db, stripe: port(sent) }, DAYS)
-    expect(sent.map((x) => x.identifier)).toEqual(['overage:2026-07-11:cus_1:0-5', 'overage:2026-07-11:cus_1:0-8'])
+    expect(sent.map((x) => x.identifier)).toEqual([
+      'overage:2026-07-11:cus_1:0-5', // run 1 submit (Stripe applied +5)
+      'overage:2026-07-11:cus_1:0-5', // run 2 re-drive — SAME id, Stripe dedups (no double-count)
+      'overage:2026-07-11:cus_1:5-8', // run 2 growth — a fresh segment, +3
+    ])
+    // the re-drive value equals the original, so Stripe's identifier dedup collapses it: 5 (once) + 3 = 8
+    expect(sent.filter((x) => x.identifier === 'overage:2026-07-11:cus_1:0-5').map((x) => x.value)).toEqual([5, 5])
+    expect(sent.find((x) => x.identifier === 'overage:2026-07-11:cus_1:5-8')?.value).toBe(3)
   })
 
   it('a tenant that LAPSED mid-window is still billed for the days it was billable, and no further', async () => {
@@ -327,7 +381,7 @@ describe('reportDailyOverage', () => {
     const { db, log } = fakeDb([tsp('t1', 'cus_1')], { t1: { '2026-07-11': 150, '2026-07-12': 199 } })
     await reportDailyOverage({ db, stripe: port(sent) }, DAYS)
     expect(sent).toHaveLength(0) // nothing owed…
-    expect(log.get('t1|2026-07-11')).toEqual({ reported: 0, included: 200, priceId: 'price_tsp' }) // …but the day is on record
+    expect(log.get('t1|2026-07-11')).toEqual({ reported: 0, included: 200, priceId: 'price_tsp', pendingTarget: null, pendingIdentifier: null }) // …but the day is on record
   })
 
   it('a PLAN CHANGE does not re-bill days the old, larger allowance covered', async () => {

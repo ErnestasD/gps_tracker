@@ -326,9 +326,11 @@ async function main(): Promise<void> {
           // worker restart or a failing run — WorkerJobFailing covers that gap.
           prom.stripeUnmappedPrice.set(r.unmappedPrices)
           prom.stripeAllowanceSkips.set(r.allowanceSkips)
+          prom.stripeFrozenNoRowDays.set(r.frozenNoRowDays)
         },
         onFailed: () => prom.jobFailed.inc({ job: 'stripe_usage' }),
         onAllowanceSkip: (i) => console.warn('stripe overage: allowance changed under a reported day', JSON.stringify(i)),
+        onFrozenNoRow: (i) => console.warn('stripe overage: FROZEN a no-row day before a plan change — reconcile if it owed', JSON.stringify(i)),
       })
     : null
   if (stripeUsageQueue !== null) await scheduleStripeUsage(stripeUsageQueue)

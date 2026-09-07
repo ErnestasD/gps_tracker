@@ -123,6 +123,10 @@ model Tenant {
   stripeSubscriptionId  String?
   /// the subscribed BASE price id (which plan) — drives the usage reporter's included-device lookup (PR B2)
   subscriptionPriceId   String?
+  /// audit F2: the instant the CURRENT subscriptionPriceId took effect (a plan change), so a missed
+  /// reporter cycle spanning that change does not recompute a pre-change day against the new
+  /// allowance. Null until the first price is recorded.
+  subscriptionPriceEffectiveAt DateTime? @db.Timestamptz()
   /// mirrors Stripe's subscription.status (active|trialing|past_due|canceled|unpaid|…); null = never subscribed
   subscriptionStatus    String?
   currentPeriodEnd      DateTime?  @db.Timestamptz()
@@ -1148,6 +1152,14 @@ model UsageReport {
   /// the day as billed) and "STRIPE_INCLUDED was corrected" (recompute it). Freezing on the allowance
   /// alone made a config typo permanently unbillable, which is the opposite of audit #23's intent.
   priceId    String?
+  /// audit F1 outbox: the cumulative overage of an IN-FLIGHT meter submission (null = none pending).
+  /// A submission is written pending BEFORE the Stripe call and cleared to `reported` after it
+  /// confirms, so a submit that succeeds while the confirming write fails is re-driven with the SAME
+  /// identifier (Stripe dedups) instead of re-billed under a new one when the day's usage then grows.
+  pendingTarget     Int?
+  /// the Stripe meter-event identifier of that in-flight submission — re-sent verbatim on retry so
+  /// the additive meter never double-counts it.
+  pendingIdentifier String?
   reportedAt DateTime @default(now()) @db.Timestamptz()
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)

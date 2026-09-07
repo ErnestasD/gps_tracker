@@ -69,6 +69,7 @@ export interface WorkerProm {
    *  them. Correct — the old allowance is what the customer had — but a skipped day stays skipped on
    *  every future run, so any usage that lands for it later is never billed. Non-zero ⇒ reconcile. */
   stripeAllowanceSkips: Gauge
+  stripeFrozenNoRowDays: Gauge
   /** Tenants whose entitlements are FLOORED (canceled/unpaid subscription, or an expired self-serve
    *  trial) and which are still being ingested and served. The floor is enforced only at device
    *  CREATE, so this is free service nobody was counting (audit MED #22). */
@@ -273,6 +274,7 @@ export function startWorkerProm(redis: Redis, port: number, poolStats?: () => { 
   const stripeOverageBackfilled = new Counter({ name: 'stripe_overage_backfilled_total', help: 'tenant-days re-reported as a delta because usage arrived after the day closed (audit #21)', registers: [registry] })
   const stripeUnmappedPrice = new Gauge({ name: 'stripe_unmapped_price_tenants', help: 'TSP subscribers whose base price is missing from STRIPE_INCLUDED — their overage bills ZERO (audit #23)', registers: [registry] })
   const stripeAllowanceSkips = new Gauge({ name: 'stripe_allowance_skipped_days', help: 'tenant-days left as billed because the plan allowance changed under them — later usage for those days is never billed (audit #21)', registers: [registry] })
+  const stripeFrozenNoRowDays = new Gauge({ name: 'stripe_frozen_norow_days', help: 'tenant-days FROZEN because a no-row day predates a plan change — a possible lost-revenue drop to reconcile (audit F2)', registers: [registry] })
   const billingLapsedTenants = new Gauge({ name: 'billing_lapsed_tenants', help: 'tenants past their entitlement floor that are still being ingested and served (audit #22)', registers: [registry] })
   const billingLapsedDevices = new Gauge({ name: 'billing_lapsed_devices', help: 'devices still registered to those tenants — the ongoing ingest/storage cost', registers: [registry] })
   const billingLapsedActionable = new Gauge({ name: 'billing_lapsed_actionable', help: 'lapsed tenants past BILLING_GRACE_DAYS — the ones worth acting on', registers: [registry] })
@@ -304,5 +306,5 @@ export function startWorkerProm(redis: Redis, port: number, poolStats?: () => { 
     console.error('metrics listener failed', err)
   })
   server.listen(port)
-  return { registry, batchRows, setLagMs: (ms) => lag.set(ms), setDataAgeMs: (ms) => dataAge.set(ms), tripsOpened, tripsClosed, tripCloseMissed, tripOdometerRejected, tripPersistErrors, tripRecomputes, tripRecomputeDeleted, tripRecomputeTruncated, geofenceEvents, ruleEvents, enginePersistErrors, notificationSent, notificationFailed, notificationSkipped, smsSent, smsFailed, webhookDelivered, webhookFailed, usageDeviceDays, usageSweepFailed, deadLettered, fieldNulled, avlFallback, clockSkewed, jobFailed, authEmailSent, pendingEvicted, billingLapseUnreachable, stripeOverageReported, stripeOverageBackfilled, stripeUnmappedPrice, stripeAllowanceSkips, billingLapsedTenants, billingLapsedDevices, billingLapsedActionable, billingLapseAction, scheduledReportsSent, retentionPruned, rejectsDrained, rejectsDropped, gdprOrphanTmp, commandsResolved, gdprErased, gdprExported, gdprFailed, server }
+  return { registry, batchRows, setLagMs: (ms) => lag.set(ms), setDataAgeMs: (ms) => dataAge.set(ms), tripsOpened, tripsClosed, tripCloseMissed, tripOdometerRejected, tripPersistErrors, tripRecomputes, tripRecomputeDeleted, tripRecomputeTruncated, geofenceEvents, ruleEvents, enginePersistErrors, notificationSent, notificationFailed, notificationSkipped, smsSent, smsFailed, webhookDelivered, webhookFailed, usageDeviceDays, usageSweepFailed, deadLettered, fieldNulled, avlFallback, clockSkewed, jobFailed, authEmailSent, pendingEvicted, billingLapseUnreachable, stripeOverageReported, stripeOverageBackfilled, stripeUnmappedPrice, stripeAllowanceSkips, stripeFrozenNoRowDays, billingLapsedTenants, billingLapsedDevices, billingLapsedActionable, billingLapseAction, scheduledReportsSent, retentionPruned, rejectsDrained, rejectsDropped, gdprOrphanTmp, commandsResolved, gdprErased, gdprExported, gdprFailed, server }
 }

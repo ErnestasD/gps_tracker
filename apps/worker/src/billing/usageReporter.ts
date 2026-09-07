@@ -63,6 +63,10 @@ export interface UsageReporterDeps {
   onUnmappedPrice?: (info: { tenantId: string; priceId: string; plan: string }) => void
   /** a day left as billed because the plan's allowance changed under it — see the loop */
   onAllowanceSkip?: (info: { tenantId: string; day: string; was: number; now: number }) => void
+  /** F2: a NO-ROW day before the current price took effect was FROZEN (not billed). Carries the day's
+   *  actual device-days + the current allowance so a human can reconstruct whether it owed and
+   *  hand-bill it — this is deliberate, but must be reconcilable, not silent. */
+  onFrozenNoRow?: (info: { tenantId: string; day: string; deviceDays: number; allowance: number }) => void
 }
 
 export interface OverageRunResult {
@@ -78,6 +82,14 @@ export interface OverageRunResult {
   /** tenant-days left as billed because the allowance changed under them. A skipped day stays
    *  skipped on every future run, so this must be visible rather than a log line nobody reads. */
   allowanceSkips: number
+  /** F1 outbox: tenant-days whose IN-FLIGHT pending submission was re-driven to Stripe (idempotent)
+   *  before any new delta was computed — the recovery path for a submit that landed but was not
+   *  recorded. Non-zero means a prior run crashed between submit and confirm. */
+  redriven: number
+  /** F2: no-row tenant-days FROZEN because they predate a plan change and their allowance can't be
+   *  reconstructed. Distinct from allowanceSkips (config skips) so a possible lost-revenue drop is
+   *  reconcilable, not folded into routine noise. */
+  frozenNoRowDays: number
 }
 
 /** UTC day (YYYY-MM-DD) `n` days before the given instant. */
@@ -138,7 +150,7 @@ export async function reportDailyOverage(
   // include tenants that lapsed INSIDE the window: they still owe the days they were billable for,
   // and enumerating only the currently-billable ones dropped exactly those days
   const subs = from === undefined ? [] : await deps.db.tenants.listActiveSubscribers(new Date(`${from}T00:00:00Z`))
-  const out: OverageRunResult = { subscribers: subs.length, reported: 0, devicesOver: 0, backfilled: 0, unmappedPrices: 0, allowanceSkips: 0 }
+  const out: OverageRunResult = { subscribers: subs.length, reported: 0, devicesOver: 0, backfilled: 0, unmappedPrices: 0, allowanceSkips: 0, redriven: 0, frozenNoRowDays: 0 }
   if (from === undefined || to === undefined) return out
   let failures = 0
   for (const s of subs) {
@@ -181,56 +193,77 @@ export async function reportDailyOverage(
         // always there to bill.
         if (lapsedMs !== null && Date.parse(`${day}T00:00:00Z`) >= lapsedMs) continue
         const prior = already.get(day)
-        // The allowance is a property of the plan AT THE TIME, so recomputing a settled day against a
-        // different one is how a downgrade (750 included → 200) turns last week into hundreds of
-        // device-days of overage the customer's plan actually covered. Such a day is left exactly as
-        // billed.
-        //
-        // The discriminator is the PRICE ID, not the allowance value. Freezing whenever `included`
-        // changed also froze the case STRIPE_INCLUDED exists to get wrong: a typo in that
-        // hand-maintained env (audit #23) would be corrected, and every day already walked under the
-        // wrong number became permanently unbillable — the trailing window's whole purpose is to
-        // recover from exactly that. Same price, different allowance ⇒ the config was fixed, and the
-        // day is recomputed; different price ⇒ the plan changed under it, and it is frozen.
+
+        // F1 outbox STEP 0 — DRIVE ANY IN-FLIGHT SUBMISSION FIRST. A pending marker means a prior run
+        // wrote `pendingTarget`+identifier BEFORE calling Stripe and never confirmed: the submit may
+        // have landed (then Stripe dedups the re-send) or not (then Stripe accepts it). Re-send the
+        // SAME identifier and confirm, so the day is settled at `pendingTarget` BEFORE we look at any
+        // new usage. This is what makes "submitted but not recorded" safe: growth becomes a NEW
+        // segment (a new identifier from the confirmed value) only after the pending one is settled,
+        // so the recomputed `over` can never be re-billed under a different identifier (audit F1).
+        let prevReported = prior?.reported ?? 0
+        const hasRow = prior !== undefined
+        if (prior?.pendingTarget != null && prior.pendingIdentifier != null) {
+          const redriveDelta = prior.pendingTarget - prior.reported
+          if (redriveDelta > 0) {
+            await deps.stripe.reportUsage({ customerId: s.stripeCustomerId, value: redriveDelta, timestampS: timestampFor(day), identifier: prior.pendingIdentifier })
+          }
+          await deps.db.usage.confirmOverageReport(s.tenantId, day, prior.pendingTarget)
+          prevReported = prior.pendingTarget
+          out.redriven++
+        }
+
+        // FREEZE a day recorded under a DIFFERENT price — the plan changed under it. The allowance is a
+        // property of the plan AT THE TIME; recomputing a settled day against a different one is how a
+        // downgrade (750 → 200 included) turns last week into hundreds of device-days the plan covered.
+        // The discriminator is the PRICE ID, not the allowance value: same price + different allowance
+        // ⇒ STRIPE_INCLUDED was corrected and the day is recomputed; different price ⇒ frozen (#23).
         if (prior?.priceId != null && prior.priceId !== s.subscriptionPriceId) {
           out.allowanceSkips++
           deps.onAllowanceSkip?.({ tenantId: s.tenantId, day, was: prior.included ?? 0, now: included })
           console.warn('stripe overage: plan changed under a settled day', s.tenantId, day, `${prior.priceId} → ${s.subscriptionPriceId} — day left as billed`)
           continue
         }
-        const over = overageDevices(byDay.get(day) ?? 0, included)
-        const prev = prior?.reported ?? 0
-        const delta = over - prev
-        if (delta <= 0) {
-          // A day UNDER its allowance owes nothing — but it still has to be recorded, or the guard
-          // above can never fire for it. Rows used to be written only after a positive submission,
-          // so precisely the days a downgrade endangers (the ones the old, larger allowance covered)
-          // had no row, no stored `included`, and were silently recomputed against the new smaller
-          // allowance on the next run. Measured: 750 → 200 with 500 devices billed 300 device-days
-          // per day of the window that the customer's plan had fully covered.
-          //
-          // Only when there is no row yet: an existing row is a high-water mark and a retroactive
-          // DECREASE must not lower it (the meter cannot go down, so lowering it would re-bill the
-          // difference on the next increase).
-          if (prior === undefined) await deps.db.usage.recordOverageReport(s.tenantId, day, { reported: over, included, priceId: s.subscriptionPriceId })
+        // F2 FREEZE — the price-id freeze above needs a ROW to fire; a MISSED reporter cycle spanning a
+        // plan change leaves the day with NO row, and recomputing it against the CURRENT allowance
+        // over-bills a downgrade (or drops an upgrade's owed day). If the day started BEFORE the
+        // current price took effect, it was under an OLDER plan whose allowance we cannot reconstruct
+        // without a row — freeze it (leave unbilled) rather than recompute wrong, and surface it.
+        if (!hasRow && s.priceEffectiveAt !== null && Date.parse(`${day}T00:00:00Z`) < s.priceEffectiveAt.getTime()) {
+          const deviceDays = byDay.get(day) ?? 0
+          out.frozenNoRowDays++
+          // a DISTINCT signal (not the config-skip gauge): this is a possible lost-revenue drop, so it
+          // carries the day's real device-days + current allowance to be hand-reconciled against the
+          // OLD plan a human can look up. The owed amount cannot be computed here (the old allowance
+          // is exactly what the missing row would have carried), which is why it is surfaced, not guessed.
+          deps.onFrozenNoRow?.({ tenantId: s.tenantId, day, deviceDays, allowance: included })
+          console.warn('stripe overage: FROZEN a no-row day before the current price took effect — NOT billed, reconcile if it owed', JSON.stringify({ tenantId: s.tenantId, day, deviceDays, allowance: included }))
           continue
         }
-        await deps.stripe.reportUsage({
-          customerId: s.stripeCustomerId,
-          value: delta,
-          timestampS: timestampFor(day),
-          // BOTH ends of the delta are in the key. With only `prev`, a retry that recomputed a LARGER
-          // `over` (usage landed between the failed attempt and the retry) reused the identifier of
-          // the smaller submission, Stripe deduped the whole event, and the difference was recorded
-          // as billed and lost. A true retry of the SAME delta still collapses.
-          identifier: `overage:${day}:${s.stripeCustomerId}:${prev}-${over}`,
-        })
-        // AFTER Stripe accepts: recording first would mark a failed submission as billed and
-        // under-bill silently — the exact failure mode this whole change exists to remove
-        await deps.db.usage.recordOverageReport(s.tenantId, day, { reported: over, included, priceId: s.subscriptionPriceId })
+
+        const over = overageDevices(byDay.get(day) ?? 0, included)
+        const delta = over - prevReported
+        if (delta <= 0) {
+          // A day UNDER its allowance owes nothing, but it must still be recorded, or the price-id
+          // freeze above can never fire for it (and F2's row-presence assumption breaks). Only when
+          // there is no row yet: an existing row is a high-water mark and a retroactive DECREASE must
+          // not lower it (the additive meter cannot go down).
+          if (!hasRow) await deps.db.usage.recordOverageReport(s.tenantId, day, { reported: over, included, priceId: s.subscriptionPriceId })
+          continue
+        }
+        // F1 outbox — write the submission PENDING (target + identifier) BEFORE the Stripe call. If the
+        // confirm below is lost, STEP 0 of the next run re-drives THIS exact identifier; the identifier
+        // still carries both ends of the delta so a genuine retry with more usage is not swallowed.
+        const identifier = `overage:${day}:${s.stripeCustomerId}:${prevReported}-${over}`
+        await deps.db.usage.beginOverageReport(s.tenantId, day, { prevReported, pendingTarget: over, pendingIdentifier: identifier, included, priceId: s.subscriptionPriceId })
+        await deps.stripe.reportUsage({ customerId: s.stripeCustomerId, value: delta, timestampS: timestampFor(day), identifier })
+        // CONFIRM: advance reported → over and clear the pending marker. A crash before this leaves the
+        // pending, which the next run re-drives — never an under-bill (Stripe accepts the miss) and
+        // never a double-bill (the re-send reuses the identifier Stripe already deduped).
+        await deps.db.usage.confirmOverageReport(s.tenantId, day, over)
         out.reported++
         out.devicesOver += delta
-        if (prev > 0) out.backfilled++
+        if (prevReported > 0) out.backfilled++
       }
     } catch (err) {
       failures++

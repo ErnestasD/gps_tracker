@@ -46,8 +46,8 @@ describe('usage report log', () => {
     await db.usage.recordOverageReport(tenantId, '2026-07-12', { reported: 3, included: 200, priceId: 'price_tsp' })
     const got = await db.usage.reportedOverage(tenantId, { from: '2026-07-11', to: '2026-07-12' })
     expect([...got.entries()].sort()).toEqual([
-      ['2026-07-11', { reported: 5, included: 200, priceId: 'price_tsp' }],
-      ['2026-07-12', { reported: 3, included: 200, priceId: 'price_tsp' }],
+      ['2026-07-11', { reported: 5, included: 200, priceId: 'price_tsp', pendingTarget: null, pendingIdentifier: null }],
+      ['2026-07-12', { reported: 3, included: 200, priceId: 'price_tsp', pendingTarget: null, pendingIdentifier: null }],
     ])
   })
 
@@ -55,14 +55,14 @@ describe('usage report log', () => {
     // the reporter re-walks a trailing window, so it writes the same tenant-day repeatedly; anything
     // other than an upsert would make the second run of every day throw
     await db.usage.recordOverageReport(tenantId, '2026-07-11', { reported: 9, included: 200, priceId: 'price_tsp' })
-    expect((await db.usage.reportedOverage(tenantId, { from: '2026-07-11', to: '2026-07-11' })).get('2026-07-11')).toEqual({ reported: 9, included: 200, priceId: 'price_tsp' })
+    expect((await db.usage.reportedOverage(tenantId, { from: '2026-07-11', to: '2026-07-11' })).get('2026-07-11')).toEqual({ reported: 9, included: 200, priceId: 'price_tsp', pendingTarget: null, pendingIdentifier: null })
   })
 
   it('keeps the PRICE and the ALLOWANCE the day was billed against', async () => {
     // the reporter re-walks past days: the price id tells it whether the PLAN changed (freeze the
     // day) or STRIPE_INCLUDED was merely corrected (recompute it)
     await db.usage.recordOverageReport(tenantId, '2026-07-13', { reported: 4, included: 750, priceId: 'price_grow' })
-    expect((await db.usage.reportedOverage(tenantId, { from: '2026-07-13', to: '2026-07-13' })).get('2026-07-13')).toEqual({ reported: 4, included: 750, priceId: 'price_grow' })
+    expect((await db.usage.reportedOverage(tenantId, { from: '2026-07-13', to: '2026-07-13' })).get('2026-07-13')).toEqual({ reported: 4, included: 750, priceId: 'price_grow', pendingTarget: null, pendingIdentifier: null })
   })
 
   it('reads are bounded by the window — an old day outside it is not returned', async () => {
