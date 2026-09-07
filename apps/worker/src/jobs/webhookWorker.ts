@@ -51,7 +51,7 @@ export async function loadWebhooks(pool: Pool, tenantId: string, accountId: stri
      WHERE w."tenantId" = $1 AND (w."accountId" = $2 OR w."accountId" IS NULL) AND w.enabled = true
        AND (cardinality(w.events) = 0 OR $3 = ANY(w.events))
        AND t.plan::text LIKE 'tsp!_%' ESCAPE '!'
-       AND (t."subscriptionStatus" IS NULL OR t."subscriptionStatus" NOT IN ('canceled','unpaid','incomplete_expired','paused'))`,
+       AND (t."subscriptionStatus" IS NULL OR t."subscriptionStatus" IN ('active','trialing','past_due'))`,
     [tenantId, accountId, kind],
   )
   return res.rows

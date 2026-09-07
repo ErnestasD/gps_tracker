@@ -198,7 +198,8 @@
     "noUpcoming": "Keine bevorstehende Rechnung.",
     "confirmChargeDetail": "Wechsel zu {{plan}} ({{price}}). Der neue Tarif gilt sofort. Eine Differenz von {{net}} (Gutschrift für ungenutzte Zeit bereits berücksichtigt) wird der nächsten Rechnung am {{date}} hinzugefügt. Jetzt wird nichts abgebucht.",
     "confirmCreditDetail": "Wechsel zu {{plan}} ({{price}}). Der neue Tarif gilt sofort. Auf der nächsten Rechnung am {{date}} erhalten Sie {{amount}} gutgeschrieben. Jetzt wird nichts abgebucht.",
-    "confirmChargeNow": "Wechsel zu {{plan}} ({{price}}). Der neue Tarif gilt sofort, und eine Differenz von {{net}} (Gutschrift für ungenutzte Zeit bereits berücksichtigt) wird sofort von Ihrer Karte abgebucht."
+    "confirmChargeNow": "Wechsel zu {{plan}} ({{price}}). Der neue Tarif gilt sofort, und eine Differenz von {{net}} (Gutschrift für ungenutzte Zeit bereits berücksichtigt) wird sofort von Ihrer Karte abgebucht.",
+    "tooManyDevices": "Zu viele Geräte ({{active}}) für diesen Tarif (max. {{cap}}). Entfernen Sie zuerst Geräte."
   },
   "branding": {
     "title": "Branding",

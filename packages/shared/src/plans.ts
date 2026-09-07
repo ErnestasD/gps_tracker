@@ -67,19 +67,32 @@ export type EntitlementKey = keyof Omit<Entitlements, 'deviceLimit'>
 export const LAPSED_SUBSCRIPTION_STATUSES = new Set(['canceled', 'unpaid', 'incomplete_expired', 'paused'])
 
 /**
+ * The POSITIVE allowlist of statuses that grant PAID service: a live payer (`active`), a Stripe/local
+ * trial (`trialing`), and Stripe's dunning grace for an EXISTING payer (`past_due`). `null` (admin-
+ * granted / never subscribed) is handled separately and also keeps its plan.
+ *
+ * This is an ALLOWLIST on purpose (audit F3): the old denylist (LAPSED_SUBSCRIPTION_STATUSES) failed
+ * OPEN — any status not explicitly lapsed kept the full paid matrix. Stripe's `incomplete` (the first
+ * invoice never paid — an SCA/3DS card that never authenticated) is by definition a NEVER-PAID
+ * subscription, yet it was absent from the denylist, so it granted white-label, API, webhooks and an
+ * uncapped device count for the ~23 h until Stripe expired it — repeatably. An allowlist floors
+ * `incomplete` and every unknown future status closed. NOTE: this is the ENTITLEMENT/metering axis
+ * only; the suspension sweep still keys on LAPSED_SUBSCRIPTION_STATUSES so a brand-new mid-3DS
+ * checkout is floored (no paid feature) but NOT actively chased/cut off.
+ */
+export const PAID_SUBSCRIPTION_STATUSES = new Set(['active', 'trialing', 'past_due'])
+
+/**
  * Is this tenant receiving PAID service right now — and therefore billable for overage?
  *
- * "Entitled" and "metered" MUST be the same set, derived from one predicate. They used to be two
- * independent lists: entitlements deliberately excluded `past_due` from the lapsed set (dunning
- * grace) while the usage reporter only selected `('active','trialing')`, so for the whole dunning
- * window a tenant kept white-label, sub-accounts, API, webhooks, SMS and an uncapped device count
- * while not a single device-day was billed. `usage_daily` still recorded the truth, but the reporter
- * only ever submits `now − 24 h` and never backfills, so those days were lost permanently even after
- * the card was fixed — roughly €283 per incident at TSP Grow scale. Audit high.
+ * "Entitled" and "metered" MUST be the same set, derived from one predicate — so this shares the
+ * PAID_SUBSCRIPTION_STATUSES allowlist with effectiveEntitlements. A never-paid `incomplete` is
+ * neither entitled nor metered; a `past_due` payer in dunning grace is both (it was NOT metered once,
+ * costing ~€283/incident at TSP Grow — audit high — which is why the two axes are now one set).
  */
 export function isBillableSubscription(subscriptionStatus: string | null): boolean {
   if (subscriptionStatus === null) return false // admin-granted / never subscribed — nothing to meter
-  return !LAPSED_SUBSCRIPTION_STATUSES.has(subscriptionStatus)
+  return PAID_SUBSCRIPTION_STATUSES.has(subscriptionStatus)
 }
 
 /** The zero-entitlement floor: a lapsed subscription grants no paid feature and a 0 device cap. */
@@ -102,7 +115,10 @@ export const FLOOR_ENTITLEMENTS: Entitlements = {
  * `past_due` (grace) / `null` (never subscribed / admin-granted) — keeps the plan's full matrix.
  */
 export function effectiveEntitlements(plan: TenantPlan, subscriptionStatus: string | null): Entitlements {
-  return subscriptionStatus !== null && LAPSED_SUBSCRIPTION_STATUSES.has(subscriptionStatus) ? FLOOR_ENTITLEMENTS : planEntitlements(plan)
+  // POSITIVE allowlist (audit F3): keep the plan's matrix ONLY for a paying/grace status or an
+  // admin-granted (null) tenant; floor everything else — including the never-paid `incomplete` and
+  // any unknown future status — CLOSED. (Was a denylist that failed open on `incomplete`.)
+  return subscriptionStatus === null || PAID_SUBSCRIPTION_STATUSES.has(subscriptionStatus) ? planEntitlements(plan) : FLOOR_ENTITLEMENTS
 }
 
 /**
