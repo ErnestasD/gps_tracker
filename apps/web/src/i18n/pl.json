@@ -2100,6 +2100,8 @@
       "verified": "Zweryfikowana",
       "failed": "Niezweryfikowana"
     },
-    "ownershipNote": "Dodaj ten rekord TXT do swojego DNS i naciśnij Sprawdź. Potwierdza on, że domena jest Twoja — dopóki się nie pojawi, nic nie jest tworzone w Twoim imieniu. Twoje wiadomości przez cały ten czas nadal wychodzą z naszego adresu."
+    "ownershipNote": "Dodaj ten rekord TXT do swojego DNS i naciśnij Sprawdź. Potwierdza on, że domena jest Twoja — dopóki się nie pojawi, nic nie jest tworzone w Twoim imieniu. Twoje wiadomości przez cały ten czas nadal wychodzą z naszego adresu.",
+    "hintTxt": "Ten rekord tylko potwierdza, że domena jest Twoja — nic nie wysyła i nigdzie nie kieruje odwiedzających. Dopóki się nie pojawi, nic nie jest tworzone w Twoim imieniu; właśnie to uniemożliwia komuś innemu wpisanie tu Twojej domeny.\n\nPo weryfikacji możesz go zostawić; usuwać nie trzeba.",
+    "hintDkim": "Klucz DKIM. Pozwala serwerom odbierającym potwierdzić, że wiadomość naprawdę pochodzi z Twojej domeny — dzięki temu nie trafia do spamu.\n\nTrzy niemal identyczne rekordy, a wartość różni się od nazwy kilkoma znakami — kopiuj, nie przepisuj. Potrzebne są wszystkie trzy; dwa z trzech to nie częściowy sukces, tylko domena, która nie może podpisywać."
   }
 }

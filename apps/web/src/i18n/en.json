@@ -2080,6 +2080,8 @@
       "verified": "Verified",
       "failed": "Not verified"
     },
-    "ownershipNote": "Add this TXT record to your DNS and press Check. It proves the domain is yours — nothing is created in your name until it resolves. Your mail keeps going out from our address the whole time."
+    "ownershipNote": "Add this TXT record to your DNS and press Check. It proves the domain is yours — nothing is created in your name until it resolves. Your mail keeps going out from our address the whole time.",
+    "hintTxt": "This record only proves the domain is yours — it sends nothing and points visitors nowhere. Nothing is created in your name until it resolves, which is what stops anyone else naming your domain here.\n\nLeave it published after verification; there is no need to remove it.",
+    "hintDkim": "A DKIM key. It lets receiving mail servers confirm a message really came from your domain, which is what keeps it out of spam.\n\nThree near-identical records, and the value differs from the name by a few characters — copy them rather than typing them. All three must be present; two out of three is not partial success, it is a domain that cannot sign."
   }
 }

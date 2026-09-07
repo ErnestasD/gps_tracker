@@ -102,7 +102,7 @@ import { restoreTenantDevices } from '@orbetra/registry'
 
 import type { MintedToken } from '../lib/mapboxToken.js'
 import type { SesIdentityGateway } from '../email/sesIdentities.js'
-import { checkDomainDns, checkPlatformSubdomain, edgeAddresses, expectedTxt, isUnderPlatformDomain, newTxtToken, verifyDomainTxt, verifyHost, type NameResolver, type TxtResolver } from './tenantSelf.js'
+import { checkDomainDns, checkSendingDomainDns, checkPlatformSubdomain, edgeAddresses, expectedTxt, isUnderPlatformDomain, newTxtToken, verifyDomainTxt, verifyHost, type NameResolver, type TxtResolver } from './tenantSelf.js'
 
 // Geofence Redis sync is BEST-EFFORT (E05-2 review MED-3): the DB row is the source of
 // truth and is already committed, so a Redis blip must NOT 500 the request (a 500 → client
@@ -2752,6 +2752,30 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
           }
         }
         return json(c, sendingDomainView(row), 201)
+      } },
+    /**
+     * What the sending domain's DNS looks like RIGHT NOW, record by record.
+     *
+     * The same answer the app-domain panel gives, for the same reason and more sharply: a single
+     * Verify button can only say yes or no to four records at once, so "ownership proved, one DKIM
+     * selector mistyped" reads as "nothing done yet". The three selectors are near-identical
+     * 32-character strings a human is transcribing, which makes a per-record answer the difference
+     * between a fix and a support thread.
+     */
+    { method: 'get', path: '/v1/tenant/sending-domain/dns', scopeClass: 'tenant', entity: 'sendingDomain', shape: 'collection', entitlement: 'customDomains',
+      handler: async (c) => {
+        if (!tenantWide(c)) return problem(c, 403, 'Forbidden', 'the sending domain is tenant-wide')
+        const row = await db.tenantSendingDomains.get(scopeOf(auth(c)))
+        if (row === null) return problem(c, 404, 'Not Found')
+        // No `deps.ses` guard: this reads DNS, not AWS. A deployment that cannot manage identities
+        // can still tell a tenant whether their records resolve, and refusing here would make the
+        // panel go blind for a reason that has nothing to do with it.
+        return json(c, await checkSendingDomainDns(
+          { txt: deps.resolveTxt, cname: deps.resolveCname },
+          row.domain,
+          row.txtToken,
+          row.dkimTokens,
+        ))
       } },
     { method: 'post', path: '/v1/tenant/sending-domain/verify', scopeClass: 'tenant', entity: 'sendingDomain', shape: 'collection', entitlement: 'customDomains',
       handler: async (c) => {

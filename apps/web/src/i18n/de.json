@@ -2080,6 +2080,8 @@
       "verified": "Bestätigt",
       "failed": "Nicht bestätigt"
     },
-    "ownershipNote": "Tragen Sie diesen TXT-Eintrag in Ihr DNS ein und klicken Sie auf Prüfen. Er belegt, dass die Domain Ihnen gehört — bis er auflöst, wird in Ihrem Namen nichts angelegt. Ihre Post geht die ganze Zeit weiter über unsere Adresse raus."
+    "ownershipNote": "Tragen Sie diesen TXT-Eintrag in Ihr DNS ein und klicken Sie auf Prüfen. Er belegt, dass die Domain Ihnen gehört — bis er auflöst, wird in Ihrem Namen nichts angelegt. Ihre Post geht die ganze Zeit weiter über unsere Adresse raus.",
+    "hintTxt": "Dieser Eintrag belegt nur, dass die Domain Ihnen gehört — er versendet nichts und führt Besucher nirgendwohin. Bis er auflöst, wird in Ihrem Namen nichts angelegt; genau das verhindert, dass jemand anderes Ihre Domain hier einträgt.\n\nNach der Bestätigung können Sie ihn stehen lassen; entfernen müssen Sie ihn nicht.",
+    "hintDkim": "Ein DKIM-Schlüssel. Empfangende Mailserver können damit bestätigen, dass eine Nachricht wirklich von Ihrer Domain kommt — das hält sie aus dem Spam.\n\nDrei fast identische Einträge, und der Wert unterscheidet sich vom Namen um wenige Zeichen — kopieren statt abtippen. Alle drei müssen da sein; zwei von drei sind kein Teilerfolg, sondern eine Domain, die nicht signieren kann."
   }
 }

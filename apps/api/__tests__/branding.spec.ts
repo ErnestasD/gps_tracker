@@ -1036,6 +1036,7 @@ describe('W3 tenant sending domain', () => {
     sesState.status = 'pending'
     sesState.failWith = null
     txtRecords.clear()
+    cnameRecords.clear()
     // one row per tenant, and several of these tests deliberately create one for T2 — without this
     // a later test reads a neighbour's leftovers and the isolation assertion passes or fails by
     // execution order rather than by anything the code does
@@ -1201,6 +1202,48 @@ describe('W3 tenant sending domain', () => {
     expect(mine.identity.domain).toBe('klientas.lt')
   })
 
+  it('★ reports each record separately — one mistyped selector is not "nothing done yet"', async () => {
+    // The reason this endpoint exists. Three near-identical 32-character selectors are being
+    // transcribed by a human, so a single yes/no over four records hides the one failure most
+    // likely to actually happen.
+    await setup(t1Token, 'klientas.lt', 'alertai')
+    await req('/v1/tenant/sending-domain/verify', t1Token, 'POST') // mints the DKIM selectors
+
+    // two selectors published correctly, the third pointing at a typo
+    cnameRecords.set('tok1._domainkey.klientas.lt', ['tok1.dkim.amazonses.com'])
+    cnameRecords.set('tok2._domainkey.klientas.lt', ['tok2.dkim.amazonses.com'])
+    cnameRecords.set('tok3._domainkey.klientas.lt', ['tok3.dkim.amazonses.co'])
+
+    const dns = (await (await req('/v1/tenant/sending-domain/dns', t1Token)).json()) as {
+      txt: { ok: boolean }
+      dkim: { name: string; ok: boolean; found: string[] }[]
+    }
+    expect(dns.txt.ok).toBe(true)
+    expect(dns.dkim.map((d) => d.ok)).toEqual([true, true, false])
+    // …and says what IS there, so the reader can see the typo rather than re-add a correct record
+    expect(dns.dkim[2]?.found).toEqual(['tok3.dkim.amazonses.co'])
+  })
+
+  it('a missing ownership record reads as absent, a superseded one as stale', async () => {
+    // `stale` is the distinction that matters: re-adding the domain mints a NEW token, so the
+    // record the tenant published is still sitting there under the right name, looking right.
+    // "Not found" beside it would be the cruellest answer we could give.
+    const created = (await (await req('/v1/tenant/sending-domain', t1Token, 'POST', { domain: 'klientas.lt', mailbox: 'alertai' })).json()) as { ownershipRecord: { name: string } }
+    const absent = (await (await req('/v1/tenant/sending-domain/dns', t1Token)).json()) as { txt: { ok: boolean; reason: string | null } }
+    expect(absent.txt).toMatchObject({ ok: false, reason: 'absent' })
+
+    txtRecords.set(created.ownershipRecord.name, [['a-token-from-an-earlier-attempt']])
+    const stale = (await (await req('/v1/tenant/sending-domain/dns', t1Token)).json()) as { txt: { ok: boolean; reason: string | null } }
+    expect(stale.txt).toMatchObject({ ok: false, reason: 'stale' })
+  })
+
+  it('the DNS view needs no SES credentials — it reads DNS, not AWS', async () => {
+    // a deployment that cannot manage identities can still tell a tenant whether their records
+    // resolve; going blind here for a reason unrelated to DNS would be the wrong refusal
+    await setup(t1Token, 'klientas.lt', 'alertai')
+    expect((await req('/v1/tenant/sending-domain/dns', t1Token)).status).toBe(200)
+  })
+
   it('is admin-only, and tenant-wide on every one of the four routes', async () => {
     const viewer = await mintTestToken({ userId: 'v-sd', tenantId: t1, role: 'viewer' })
     const pinned = await mintTestToken({ userId: 'p-sd', tenantId: t1, role: 'tsp_admin', accountId: 'acc-x' })
@@ -1209,5 +1252,6 @@ describe('W3 tenant sending domain', () => {
       expect((await req('/v1/tenant/sending-domain', pinned, method, body)).status, method).toBe(403)
     }
     expect((await req('/v1/tenant/sending-domain/verify', pinned, 'POST')).status).toBe(403)
+    expect((await req('/v1/tenant/sending-domain/dns', pinned)).status).toBe(403)
   })
 })

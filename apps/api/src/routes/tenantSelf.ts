@@ -1,4 +1,6 @@
 import { randomBytes } from 'node:crypto'
+
+import { dkimRecords } from '@orbetra/shared'
 import { resolve4 as dnsResolve4, resolveCname as dnsResolveCname, resolveTxt as dnsResolveTxt } from 'node:dns/promises'
 
 /** DNS TXT resolver — injectable so tests don't hit real DNS. */
@@ -294,6 +296,68 @@ export async function checkDomainDns(
   return {
     txt: { ok: txtOk, found: txtFound, reason: txtReason },
     route: { ok: routeOk, found: [...new Set(routeFound)], expected, reason },
+  }
+}
+
+/** One DKIM selector's live state: is the CNAME published, and does it point where SES asked. */
+export type DkimRecordDns = { name: string; expected: string; ok: boolean; found: string[] }
+
+export type SendingDomainDns = {
+  /** the ownership TXT — the record `/verify` reads BEFORE it asks SES anything */
+  txt: DnsCheck & { reason: TxtReason | null }
+  /** the three DKIM CNAMEs; EMPTY until ownership is proved, because SES has not minted them yet */
+  dkim: DkimRecordDns[]
+}
+
+/**
+ * Look at a SENDING domain's live DNS and report each record separately (ADR-036).
+ *
+ * The same reasoning as `checkDomainDns` one section up, for the same reason: a single Verify button
+ * can only say yes or no to four records at once, so "ownership proved, one DKIM selector
+ * mistyped" looks exactly like "nothing done yet". Here it is worse than for an app domain, because
+ * the three selectors are near-identical 32-character strings and the panel is asking a human to
+ * transcribe them — the failure this reports is the one most likely to actually happen.
+ *
+ * DKIM is checked by CNAME only, unlike the app domain's routing half. `<token>._domainkey.<domain>`
+ * is never an apex, so the ALIAS/ANAME flattening that forces an address check there cannot apply,
+ * and an address published at a `_domainkey` name would not be a DKIM record at all.
+ */
+export async function checkSendingDomainDns(
+  resolvers: { txt: TxtResolver; cname: NameResolver },
+  domain: string,
+  txtToken: string,
+  dkimTokens: readonly string[],
+): Promise<SendingDomainDns> {
+  const txtFound: string[] = []
+  const oursFound: string[] = []
+  for (const host of [verifyHost(domain), domain]) {
+    try {
+      for (const chunks of await resolvers.txt(host)) {
+        const value = chunks.join('')
+        txtFound.push(value)
+        if (host !== domain || value.startsWith(TXT_PREFIX)) oursFound.push(value)
+      }
+    } catch {
+      // NXDOMAIN / no TXT — a name nobody has configured yet is the normal case here
+    }
+  }
+  const txtOk = txtFound.includes(txtToken) || txtFound.includes(expectedTxt(txtToken))
+
+  const dkim = await Promise.all(
+    dkimRecords(domain, dkimTokens).map(async (r) => {
+      const expected = canon(r.value)
+      try {
+        const found = (await resolvers.cname(r.name)).map(canon)
+        return { name: r.name, expected, ok: found.includes(expected), found }
+      } catch {
+        return { name: r.name, expected, ok: false, found: [] }
+      }
+    }),
+  )
+
+  return {
+    txt: { ok: txtOk, found: txtFound, reason: txtOk ? null : oursFound.length > 0 ? 'stale' : 'absent' },
+    dkim,
   }
 }
 

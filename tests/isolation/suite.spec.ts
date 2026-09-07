@@ -114,6 +114,7 @@ const TENANT_WIDE_ONLY: readonly (readonly [string, string, string?])[] = [
   ['GET', '/v1/tenant/sending-domain'],
   ['POST', '/v1/tenant/sending-domain'],
   ['POST', '/v1/tenant/sending-domain/verify'],
+  ['GET', '/v1/tenant/sending-domain/dns'],
   ['DELETE', '/v1/tenant/sending-domain'],
   // create is the one account method that ignores the pin — list/get/update/remove all honour it
   ['POST', '/v1/accounts'],
@@ -242,6 +243,18 @@ const paramEntity = (m: { method: string; path: string; entity: string }): strin
  * Collection entities whose rows have no id to check for, and why — so that a NEW collection entity
  * without a fixture id fails loudly instead of joining them in silence.
  */
+/**
+ * Collection GETs that answer 404 when the tenant has not set the thing up yet.
+ *
+ * The sweep asserts 200 because a collection route that cannot be listed cannot be checked for
+ * leaked ids, and a route quietly 404ing for everyone would sail through as "no leak". A REASON is
+ * required for the same purpose as the map below: an exemption nobody had to justify is how a route
+ * stops being tested.
+ */
+const COLLECTIONS_404_WHEN_UNSET: Record<string, string> = {
+  '/v1/tenant/sending-domain/dns': "reports the live DNS of the tenant's sending domain; with no sending domain there is no report to give, and 200 with an invented empty one would tell the panel that records were looked for and missing. Its sibling GET /v1/tenant/sending-domain answers 200 + null on purpose — the settings card loads that one on every visit — and is swept normally above",
+}
+
 const COLLECTIONS_WITHOUT_ID: Record<string, string> = {
   branding: 'GET /v1/tenant/branding returns a single object, and its scope is the JWT tenant — there is no foreign id it could contain. branding.spec.ts:112 covers it',
   mapToken: 'GET /v1/map/token returns one deployment-wide Mapbox credential, identical for every tenant — there are no rows and no foreign id. It is in the manifest for the AUTH sweep: minting costs us money, so it must never answer without a session (mapboxToken.spec.ts, branding.spec.ts)',
@@ -276,7 +289,9 @@ describe('E03-2 tenant isolation (manifest-driven)', () => {
     const collections = fx.manifest.filter((m) => m.shape === 'collection' && m.method === 'get' && m.scopeClass !== 'platform')
     for (const m of collections) {
       const res = await req(m.path, fx.t1.tokenTenant)
-      expect(res.status).toBe(200)
+      const unset = COLLECTIONS_404_WHEN_UNSET[m.path]
+      if (unset !== undefined && res.status === 404) continue
+      expect(res.status, `${m.path} as T1${unset !== undefined ? ' (exempt only for 404)' : ''}`).toBe(200)
       // The item loop guards against a missing fixture id; this loop did not, and the same vacuity
       // applies with none of the noise: `idFor` returns '', no row has an id of '', the assertion
       // passes, and a whole collection route is untested while showing green.

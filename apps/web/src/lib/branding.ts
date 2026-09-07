@@ -607,6 +607,13 @@ export const getDomainDns = (id: string) => getJson<DomainDns>(`/v1/tenant/domai
  * on the platform address until SES has verified theirs. The screen has to render that state calmly.
  */
 export const getSendingDomain = () => getJson<SendingDomainState>('/v1/tenant/sending-domain')
+
+/** What each sending-domain record looks like in live DNS — the sibling of getDomainDns. */
+export type SendingDomainDns = {
+  txt: { ok: boolean; found: string[]; reason: 'stale' | 'absent' | null }
+  dkim: { name: string; expected: string; ok: boolean; found: string[] }[]
+}
+export const getSendingDomainDns = () => getJson<SendingDomainDns>('/v1/tenant/sending-domain/dns')
 export const setSendingDomain = (domain: string, mailbox: string) =>
   mutate<SendingDomainRead>('POST', '/v1/tenant/sending-domain', { domain, mailbox })
 /** Ask SES whether the DKIM records have appeared. Returns the row either way — a still-pending
