@@ -12,7 +12,7 @@ export const notificationChannels: KbArticle = {
       keywords: ['channel', 'email', 'telegram', 'push', 'webhook', 'notification', 'delivery', 'recipient'],
       blocks: [
         { p: 'A rule with no channel still records its events — you just have to go and look. Adding a channel is what turns it into something that reaches you.' },
-        { h2: 'The four channels', id: 'channels' },
+        { h2: 'The four ways an alert reaches you', id: 'channels' },
         { table: { head: ['Channel', 'Good for', 'Watch out for'], rows: [
           ['**E-mail**', 'A record somebody can forward, file or reply to.', 'Filters and spam folders. Add the sender to the address book once.'],
           ['**Telegram**', 'A shared operations group where a whole team sees the same alert.', 'Needs a one-time pairing so we know which chat to write to.'],
@@ -20,7 +20,7 @@ export const notificationChannels: KbArticle = {
           ['**Webhook**', 'Another system: a dispatch tool, a ticket queue, a chat bot.', 'Set up separately from rules — see [Webhooks](kb:webhooks).'],
         ] } },
         { h2: 'One rule, several channels', id: 'multiple' },
-        { p: 'A rule can carry more than one channel, and often should: a panic alert belongs in a group chat **and** in an inbox, because the two fail in different ways. Add the second channel for the rules where a missed message actually matters, and leave everything else on one.' },
+        { p: 'A rule itself carries the first three; a webhook is set up on its own screen and subscribes to event kinds rather than to a rule. A rule can carry more than one channel, and often should: a panic alert belongs in a group chat **and** in an inbox, because the two fail in different ways. Add the second channel for the rules where a missed message actually matters, and leave everything else on one.' },
         { h2: 'Alerts follow the account, not the reader', id: 'language' },
         { p: 'An alert e-mail is written in the account\'s language and uses the account\'s units and time zone. That is deliberate: many recipients are people who have no login here — a workshop, a customer, a driver\'s private address — and there is no per-person preference to read. The setting is under **Settings → Reports and e-mails**, and changing it changes every alert and scheduled report the account sends.' },
         { callout: 'note', p: 'The language switcher in the corner of the dashboard changes only what **you** see in the browser. It does not change what your colleagues receive.' },
@@ -36,7 +36,7 @@ export const notificationChannels: KbArticle = {
       keywords: ['kanalas', 'el. paštas', 'telegram', 'push', 'webhook', 'pranešimas', 'pristatymas', 'gavėjas'],
       blocks: [
         { p: 'Taisyklė be kanalo savo įvykius vis tiek įrašo – tik reikia nueiti ir pasižiūrėti. Kanalo pridėjimas paverčia ją tuo, kas jus pasiekia.' },
-        { h2: 'Keturi kanalai', id: 'channels' },
+        { h2: 'Keturi būdai, kaip pranešimas jus pasiekia', id: 'channels' },
         { table: { head: ['Kanalas', 'Kam tinka', 'Į ką atkreipti dėmesį'], rows: [
           ['**El. paštas**', 'Įrašui, kurį galima persiųsti, susegti ar į jį atsakyti.', 'Filtrai ir šlamšto aplankai. Vieną kartą įtraukite siuntėją į adresų knygą.'],
           ['**Telegram**', 'Bendrai darbo grupei, kur tą patį pranešimą mato visa komanda.', 'Reikia vienkartinio susiejimo, kad žinotume, į kurį pokalbį rašyti.'],
@@ -44,7 +44,7 @@ export const notificationChannels: KbArticle = {
           ['**Webhook**', 'Kitai sistemai: dispečerinei programai, užduočių eilei, pokalbių botui.', 'Nustatomas atskirai nuo taisyklių – žr. [Webhook\'ai](kb:webhooks).'],
         ] } },
         { h2: 'Viena taisyklė, keli kanalai', id: 'multiple' },
-        { p: 'Taisyklė gali turėti daugiau nei vieną kanalą, ir dažnai turėtų: pavojaus pranešimui vieta ir grupės pokalbyje, **ir** pašto dėžutėje, nes jie genda skirtingai. Antrą kanalą pridėkite toms taisyklėms, kur praleista žinutė iš tikrųjų svarbi, o visa kita palikite su vienu.' },
+        { p: 'Pati taisyklė neša pirmuosius tris; webhook\'as nustatomas savo ekrane ir prenumeruoja įvykių rūšis, o ne taisyklę. Taisyklė gali turėti daugiau nei vieną kanalą, ir dažnai turėtų: pavojaus pranešimui vieta ir grupės pokalbyje, **ir** pašto dėžutėje, nes jie genda skirtingai. Antrą kanalą pridėkite toms taisyklėms, kur praleista žinutė iš tikrųjų svarbi, o visa kita palikite su vienu.' },
         { h2: 'Pranešimai seka paskyrą, o ne skaitytoją', id: 'language' },
         { p: 'Pranešimo laiškas rašomas paskyros kalba ir naudoja paskyros vienetus bei laiko juostą. Tai sąmoninga: daug gavėjų yra žmonės, neturintys čia prisijungimo – dirbtuvės, klientas, privatus vairuotojo adresas – ir jokių asmeninių nuostatų, kurias būtų galima perskaityti, tiesiog nėra. Nustatymas yra skiltyje **Nustatymai → Ataskaitos ir el. laiškai**, ir jį pakeitus pasikeičia kiekvienas paskyros siunčiamas pranešimas bei planinė ataskaita.' },
         { callout: 'note', p: 'Kalbos perjungiklis skydelio kampe keičia tik tai, ką matote **jūs** naršyklėje. Jis nekeičia to, ką gauna jūsų kolegos.' },
@@ -60,7 +60,7 @@ export const notificationChannels: KbArticle = {
       keywords: ['kanał', 'e-mail', 'telegram', 'push', 'webhook', 'powiadomienie', 'dostarczenie', 'odbiorca'],
       blocks: [
         { p: 'Reguła bez kanału i tak zapisuje swoje zdarzenia — trzeba tylko pójść i zajrzeć. Dodanie kanału zamienia ją w coś, co do Ciebie dociera.' },
-        { h2: 'Cztery kanały', id: 'channels' },
+        { h2: 'Cztery drogi, którymi alert do Ciebie dociera', id: 'channels' },
         { table: { head: ['Kanał', 'Dobry do', 'Na co uważać'], rows: [
           ['**E-mail**', 'Zapisu, który można przesłać dalej, zarchiwizować albo na niego odpowiedzieć.', 'Filtry i foldery spamu. Raz dodaj nadawcę do książki adresowej.'],
           ['**Telegram**', 'Wspólnej grupy operacyjnej, gdzie ten sam alert widzi cały zespół.', 'Wymaga jednorazowego sparowania, żebyśmy wiedzieli, do którego czatu pisać.'],
@@ -68,12 +68,12 @@ export const notificationChannels: KbArticle = {
           ['**Webhook**', 'Innego systemu: narzędzia dyspozytorskiego, kolejki zgłoszeń, bota czatowego.', 'Konfigurowany osobno od reguł — zobacz [Webhooki](kb:webhooks).'],
         ] } },
         { h2: 'Jedna reguła, kilka kanałów', id: 'multiple' },
-        { p: 'Reguła może mieć więcej niż jeden kanał i często powinna: alert z przycisku alarmowego należy się i do grupy czatowej, **i** do skrzynki, bo te dwa zawodzą w różny sposób. Drugi kanał dodaj tam, gdzie przegapiona wiadomość naprawdę ma znaczenie, a resztę zostaw na jednym.' },
+        { p: 'Sama reguła niesie pierwsze trzy; webhook konfiguruje się na własnym ekranie i subskrybuje rodzaje zdarzeń, a nie regułę. Reguła może mieć więcej niż jeden kanał i często powinna: alert z przycisku alarmowego należy się i do grupy czatowej, **i** do skrzynki, bo te dwa zawodzą w różny sposób. Drugi kanał dodaj tam, gdzie przegapiona wiadomość naprawdę ma znaczenie, a resztę zostaw na jednym.' },
         { h2: 'Alerty idą za kontem, nie za czytelnikiem', id: 'language' },
-        { p: 'E-mail alertu jest pisany w języku konta i używa jednostek oraz strefy czasowej konta. To celowe: wielu odbiorców to osoby bez loginu — warsztat, klient, prywatny adres kierowcy — i nie ma żadnych osobistych preferencji do odczytania. Ustawienie znajdziesz w **Ustawienia → Raporty i e-maile**, a jego zmiana zmienia każdy alert i raport cykliczny wysyłany z konta.' },
+        { p: 'E-mail alertu jest pisany w języku konta i używa jednostek oraz strefy czasowej konta. To celowe: wielu odbiorców to osoby bez loginu — warsztat, klient, prywatny adres kierowcy — i nie ma żadnych osobistych preferencji do odczytania. Ustawienie znajdziesz w **Ustawieniach → Raporty i e-maile**, a jego zmiana zmienia każdy alert i raport cykliczny wysyłany z konta.' },
         { callout: 'note', p: 'Przełącznik języka w rogu panelu zmienia tylko to, co widzisz **Ty** w przeglądarce. Nie zmienia tego, co dostają Twoi współpracownicy.' },
         { h2: 'Adresy, które przestają działać', id: 'bounces' },
-        { p: 'Adres, który trwale odbija — już nie istnieje albo odmawia przyjęcia poczty — zostaje zapamiętany i nie jest ponownie zapisywany, bo dalsze wysyłanie na martwy adres pogarsza dostarczalność wszystkich pozostałych wiadomości z tej platformy. Jeśli ktoś przestał dostawać alerty, które kiedyś dostawał, sprawdź to w pierwszej kolejności; zobacz [Nie dostaję e-maili](kb:not-getting-emails).' },
+        { p: 'Adres, który trwale odbija — już nie istnieje albo odmawia przyjęcia poczty — zostaje zapamiętany i nie wysyłamy już na niego kolejnych wiadomości, bo dalsze wysyłanie na martwy adres pogarsza dostarczalność wszystkich pozostałych wiadomości z tej platformy. Jeśli ktoś przestał dostawać alerty, które kiedyś dostawał, sprawdź to w pierwszej kolejności; zobacz [Nie dostaję e-maili](kb:not-getting-emails).' },
         { h2: 'Wybór odbiorców', id: 'recipients' },
         { p: 'Wysyłaj do osoby, która zareaguje, a nie do wszystkich, których to może interesować. Alert wysłany do sześciu osób to alert, o którym sześć osób zakłada, że zajmuje się nim ktoś inny. Jeśli ma go widzieć grupa, użyj kanału grupowego — po to jest.' },
       ],
@@ -84,7 +84,7 @@ export const notificationChannels: KbArticle = {
       keywords: ['kanal', 'e-mail', 'telegram', 'push', 'webhook', 'benachrichtigung', 'zustellung', 'empfänger'],
       blocks: [
         { p: 'Eine Regel ohne Kanal zeichnet ihre Ereignisse trotzdem auf — Sie müssen nur nachsehen gehen. Ein Kanal macht daraus etwas, das Sie erreicht.' },
-        { h2: 'Die vier Kanäle', id: 'channels' },
+        { h2: 'Die vier Wege, auf denen ein Alarm Sie erreicht', id: 'channels' },
         { table: { head: ['Kanal', 'Gut für', 'Achtung'], rows: [
           ['**E-Mail**', 'Einen Beleg, den jemand weiterleiten, ablegen oder beantworten kann.', 'Filter und Spam-Ordner. Nehmen Sie den Absender einmal ins Adressbuch.'],
           ['**Telegram**', 'Eine gemeinsame Betriebsgruppe, in der ein ganzes Team denselben Alarm sieht.', 'Braucht eine einmalige Kopplung, damit wir wissen, in welchen Chat wir schreiben.'],
@@ -92,9 +92,9 @@ export const notificationChannels: KbArticle = {
           ['**Webhook**', 'Ein anderes System: Dispositionstool, Ticket-Queue, Chatbot.', 'Wird getrennt von Regeln eingerichtet — siehe [Webhooks](kb:webhooks).'],
         ] } },
         { h2: 'Eine Regel, mehrere Kanäle', id: 'multiple' },
-        { p: 'Eine Regel kann mehr als einen Kanal tragen und sollte das oft: ein Notrufalarm gehört in einen Gruppenchat **und** in ein Postfach, denn beide fallen unterschiedlich aus. Setzen Sie den zweiten Kanal dort ein, wo eine verpasste Nachricht wirklich zählt, und lassen Sie alles andere bei einem.' },
+        { p: 'Die Regel selbst trägt die ersten drei; ein Webhook wird auf seiner eigenen Seite eingerichtet und abonniert Ereignisarten, nicht eine Regel. Eine Regel kann mehr als einen Kanal tragen und sollte das oft: Ein Panikalarm gehört in einen Gruppenchat **und** in ein Postfach, denn beide fallen unterschiedlich aus. Setzen Sie den zweiten Kanal dort ein, wo eine verpasste Nachricht wirklich zählt, und lassen Sie alles andere bei einem.' },
         { h2: 'Alarme folgen dem Konto, nicht dem Leser', id: 'language' },
-        { p: 'Eine Alarm-E-Mail wird in der Sprache des Kontos geschrieben und nutzt dessen Einheiten und Zeitzone. Das ist Absicht: viele Empfänger haben hier gar keinen Zugang — eine Werkstatt, ein Kunde, die private Adresse eines Fahrers — und es gibt keine persönliche Einstellung zum Auslesen. Die Einstellung steht unter **Einstellungen → Berichte und E-Mails**, und sie ändert jeden Alarm und jeden geplanten Bericht, den das Konto versendet.' },
+        { p: 'Eine Alarm-E-Mail wird in der Sprache des Kontos geschrieben und nutzt dessen Einheiten und Zeitzone. Das ist Absicht: Viele Empfänger haben hier gar keinen Zugang — eine Werkstatt, ein Kunde, die private Adresse eines Fahrers — und es gibt keine persönliche Einstellung zum Auslesen. Die Einstellung steht unter **Einstellungen → Berichte und E-Mails**, und sie ändert jeden Alarm und jeden geplanten Bericht, den das Konto versendet.' },
         { callout: 'note', p: 'Der Sprachumschalter in der Ecke des Dashboards ändert nur, was **Sie** im Browser sehen. Er ändert nicht, was Ihre Kolleginnen und Kollegen empfangen.' },
         { h2: 'Adressen, die aufhören zu funktionieren', id: 'bounces' },
         { p: 'Eine Adresse, die hart zurückkommt — existiert nicht mehr oder verweigert die Annahme — wird gemerkt und nicht erneut beschrieben, denn weiter an eine tote Adresse zu senden verschlechtert die Zustellung aller anderen Nachrichten dieser Plattform. Bekommt jemand Alarme nicht mehr, die er früher bekam, prüfen Sie das zuerst; siehe [Keine E-Mails](kb:not-getting-emails).' },

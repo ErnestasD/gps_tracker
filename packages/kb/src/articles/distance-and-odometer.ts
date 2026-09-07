@@ -8,10 +8,10 @@ export const distanceAndOdometer: KbArticle = {
   doc: {
     en: {
       title: 'Distance and the odometer',
-      summary: 'Three different numbers can all be called "kilometres driven". Which one you are looking at, and which one to bill from.',
+      summary: 'Three different numbers can all be called “kilometres driven”. Which one you are looking at, and which one to bill from.',
       keywords: ['distance', 'odometer', 'mileage', 'kilometres', 'gps distance', 'discrepancy', 'billing'],
       blocks: [
-        { p: 'Nothing generates more "your system is wrong" conversations than distance, and almost always because two people are comparing two different measurements.' },
+        { p: 'Nothing generates more “your system is wrong” conversations than distance, and almost always because two people are comparing two different measurements.' },
         { h2: 'The three sources', id: 'sources' },
         { table: { head: ['Source', 'What it is', 'Behaviour'], rows: [
           ['**GPS distance**', 'The length of the line through the recorded positions.', 'Always available. Slightly under-reads on winding roads, because a curve is drawn as a series of straight segments.'],
@@ -30,24 +30,24 @@ export const distanceAndOdometer: KbArticle = {
         ] },
         { p: 'A difference of a couple of percent between GPS distance and the dashboard is normal and expected. A difference of tens of percent is a signal worth investigating — usually poor coverage on a route, or a very long recording interval.' },
         { h2: 'Which to use for billing or reimbursement', id: 'billing' },
-        { p: 'Pick one source and keep it. Consistency matters more than which number is "right": a customer invoiced from GPS distance every month has a comparable series, while a customer invoiced from whichever source happened to be available has an argument every month. Where a contract references the vehicle\'s own odometer, use CAN mileage and say so in the contract.' },
+        { p: 'Pick one source and keep it. Consistency matters more than which number is “right”: a customer invoiced from GPS distance every month has a comparable series, while a customer invoiced from whichever source happened to be available has an argument every month. Where a contract references the vehicle\'s own odometer, use CAN mileage and say so in the contract.' },
       ],
     },
     lt: {
       title: 'Atstumas ir odometras',
-      summary: 'Trys skirtingi skaičiai gali vadintis „nuvažiuoti kilometrai". Į kurį žiūrite ir pagal kurį išrašyti sąskaitą.',
+      summary: 'Trys skirtingi skaičiai gali vadintis „nuvažiuoti kilometrai“. Į kurį žiūrite ir pagal kurį išrašyti sąskaitą.',
       keywords: ['atstumas', 'odometras', 'rida', 'kilometrai', 'gps atstumas', 'neatitikimas', 'sąskaita'],
       blocks: [
-        { p: 'Niekas nesukelia tiek pokalbių „jūsų sistema klysta" kiek atstumas, ir beveik visada todėl, kad du žmonės lygina du skirtingus matavimus.' },
+        { p: 'Niekas nesukelia tiek pokalbių „jūsų sistema klysta“ kiek atstumas, ir beveik visada todėl, kad du žmonės lygina du skirtingus matavimus.' },
         { h2: 'Trys šaltiniai', id: 'sources' },
         { table: { head: ['Šaltinis', 'Kas tai', 'Elgsena'], rows: [
           ['**GPS atstumas**', 'Linijos, einančios per įrašytas pozicijas, ilgis.', 'Visada prieinamas. Vingiuotuose keliuose šiek tiek per mažas, nes kreivė braižoma kaip tiesių atkarpų virtinė.'],
-          ['**Įrenginio odometras**', 'Bendra suma, kurią seklys skaičiuoja pats.', 'Stabilesnis ilgose distancijose. Atsistato perkrovus ar pakeitus seklį.'],
+          ['**Įrenginio odometras**', 'Bendra suma, kurią sekiklis skaičiuoja pats.', 'Stabilesnis ilgose distancijose. Atsistato perkrovus ar pakeitus sekiklį.'],
           ['**Automobilio odometras (CAN)**', 'Gamintojo skaitiklis, nuskaitytas iš automobilio magistralės.', 'Būtent tas skaičius rūpi serviso knygelei ir lizingo sutarčiai. Reikia CAN – žr. [CAN ir OBD duomenys](kb:can-and-obd).'],
         ] } },
         { h2: 'Kurį naudoja kelionė', id: 'choice' },
         { p: 'Kiekviena kelionė įrašo ne tik atstumą, bet ir iš kur tas atstumas gautas, o kelionių sąrašas tai parodo. Palikus automatinį režimą, pirmenybė teikiama paties įrenginio odometrui, jei jis yra ir atrodo įtikinamas, o atsarginis variantas – GPS atstumas. Įrenginį galima priskirti vienam šaltiniui, kai žinote jo elgseną ir labiausiai norite nuoseklumo.' },
-        { callout: 'note', p: 'Odometro rodmuo, kuris juda atgal arba šokteli neįtikėtinu dydžiu, atmetamas, o ne priimamas. Kitaip vidury mėnesio pakeistas seklys vienu įrašu ištrintų arba prasimanytų mėnesio ridą.' },
+        { callout: 'note', p: 'Odometro rodmuo, kuris juda atgal arba šokteli neįtikėtinu dydžiu, atmetamas, o ne priimamas. Kitaip vidury mėnesio pakeistas sekiklis vienu įrašu ištrintų arba prasimanytų mėnesio ridą.' },
         { h2: 'Kodėl niekada tiksliai nesutaps su prietaisų skydeliu', id: 'discrepancy' },
         { ul: [
           'Automobilio odometras kalibruojamas pagal rato apsisukimus, o padangų nusidėvėjimas, dydis ir slėgis keičia rezultatą. Teisiškai jam leidžiama rodyti daugiau ir neleidžiama mažiau.',
@@ -57,15 +57,15 @@ export const distanceAndOdometer: KbArticle = {
         ] },
         { p: 'Poros procentų skirtumas tarp GPS atstumo ir prietaisų skydelio yra normalus ir laukiamas. Dešimčių procentų skirtumas – signalas, kurį verta tirti; dažniausiai tai prasta aprėptis maršrute arba labai retas įrašymo intervalas.' },
         { h2: 'Kurį naudoti sąskaitoms ar kompensacijoms', id: 'billing' },
-        { p: 'Pasirinkite vieną šaltinį ir jo laikykitės. Nuoseklumas svarbiau nei tai, kuris skaičius „teisingas": klientas, kuriam kas mėnesį sąskaita rašoma pagal GPS atstumą, turi palyginamą eilutę, o klientas, kuriam sąskaita rašoma pagal tai, kas tuo metu buvo prieinama, kas mėnesį turi ginčą. Kur sutartyje nurodytas paties automobilio odometras, naudokite CAN ridą ir tai sutartyje parašykite.' },
+        { p: 'Pasirinkite vieną šaltinį ir jo laikykitės. Nuoseklumas svarbiau nei tai, kuris skaičius „teisingas“: klientas, kuriam kas mėnesį sąskaita rašoma pagal GPS atstumą, turi palyginamą eilutę, o klientas, kuriam sąskaita rašoma pagal tai, kas tuo metu buvo prieinama, kas mėnesį turi ginčą. Kur sutartyje nurodytas paties automobilio odometras, naudokite CAN ridą ir tai sutartyje parašykite.' },
       ],
     },
     pl: {
       title: 'Dystans a licznik',
-      summary: 'Trzy różne liczby mogą nazywać się „przejechane kilometry". Na którą patrzysz i z której fakturować.',
+      summary: 'Trzy różne liczby mogą nazywać się „przejechane kilometry”. Na którą patrzysz i z której fakturować.',
       keywords: ['dystans', 'licznik', 'przebieg', 'kilometry', 'dystans gps', 'rozbieżność', 'fakturowanie'],
       blocks: [
-        { p: 'Nic nie generuje tylu rozmów „wasz system się myli" co dystans, i prawie zawsze dlatego, że dwie osoby porównują dwa różne pomiary.' },
+        { p: 'Nic nie generuje tylu rozmów „wasz system się myli” co dystans, i prawie zawsze dlatego, że dwie osoby porównują dwa różne pomiary.' },
         { h2: 'Trzy źródła', id: 'sources' },
         { table: { head: ['Źródło', 'Co to jest', 'Zachowanie'], rows: [
           ['**Dystans GPS**', 'Długość linii przechodzącej przez zapisane pozycje.', 'Zawsze dostępny. Na krętych drogach lekko zaniża, bo łuk rysowany jest jako ciąg prostych odcinków.'],
@@ -84,15 +84,15 @@ export const distanceAndOdometer: KbArticle = {
         ] },
         { p: 'Różnica rzędu kilku procent między dystansem GPS a deską jest normalna i oczekiwana. Różnica rzędu dziesiątek procent to sygnał wart zbadania — zwykle słaby zasięg na trasie albo bardzo rzadki zapis.' },
         { h2: 'Którego użyć do fakturowania lub rozliczeń', id: 'billing' },
-        { p: 'Wybierz jedno źródło i się go trzymaj. Spójność liczy się bardziej niż to, która liczba jest „prawidłowa": klient fakturowany co miesiąc z dystansu GPS ma porównywalny szereg, a klient fakturowany z tego, co akurat było dostępne, ma co miesiąc spór. Gdy umowa odwołuje się do licznika pojazdu, użyj przebiegu z CAN i zapisz to w umowie.' },
+        { p: 'Wybierz jedno źródło i się go trzymaj. Spójność liczy się bardziej niż to, która liczba jest „prawidłowa”: klient fakturowany co miesiąc z dystansu GPS ma porównywalny szereg, a klient fakturowany z tego, co akurat było dostępne, ma co miesiąc spór. Gdy umowa odwołuje się do licznika pojazdu, użyj przebiegu z CAN i zapisz to w umowie.' },
       ],
     },
     de: {
       title: 'Strecke und Kilometerstand',
-      summary: 'Drei verschiedene Zahlen können „gefahrene Kilometer" heißen. Welche Sie ansehen — und aus welcher Sie abrechnen.',
+      summary: 'Drei verschiedene Zahlen können „gefahrene Kilometer“ heißen. Welche Sie ansehen — und aus welcher Sie abrechnen.',
       keywords: ['strecke', 'kilometerstand', 'laufleistung', 'gps-strecke', 'abweichung', 'abrechnung'],
       blocks: [
-        { p: 'Nichts erzeugt so viele „Ihr System rechnet falsch"-Gespräche wie die Strecke — und fast immer, weil zwei Leute zwei verschiedene Messungen vergleichen.' },
+        { p: 'Nichts erzeugt so viele „Ihr System rechnet falsch“-Gespräche wie die Strecke — und fast immer, weil zwei Leute zwei verschiedene Messungen vergleichen.' },
         { h2: 'Die drei Quellen', id: 'sources' },
         { table: { head: ['Quelle', 'Was es ist', 'Verhalten'], rows: [
           ['**GPS-Strecke**', 'Die Länge der Linie durch die aufgezeichneten Positionen.', 'Immer verfügbar. Auf kurvigen Straßen leicht zu niedrig, weil eine Kurve als Folge gerader Abschnitte gezeichnet wird.'],
@@ -109,9 +109,9 @@ export const distanceAndOdometer: KbArticle = {
           'Positionen, denen wir nicht trauen, fließen gar nicht in die Strecke ein — siehe [Positionsgenauigkeit](kb:position-accuracy).',
           'Bewegung unterhalb der Rauschschwelle wird nicht gezählt, ein Tag Rangieren addiert also nichts.',
         ] },
-        { p: 'Ein Unterschied von ein paar Prozent zwischen GPS-Strecke und Tacho ist normal und zu erwarten. Ein Unterschied von Zehnerprozenten ist ein Signal — meist schlechte Abdeckung auf einer Route oder ein sehr langes Aufzeichnungsintervall.' },
+        { p: 'Ein Unterschied von ein paar Prozent zwischen GPS-Strecke und Tacho ist normal und zu erwarten. Ein Unterschied im Bereich von zehn Prozent und mehr ist ein Signal — meist schlechte Abdeckung auf einer Route oder ein sehr langes Aufzeichnungsintervall.' },
         { h2: 'Woraus abrechnen oder erstatten', id: 'billing' },
-        { p: 'Wählen Sie eine Quelle und bleiben Sie dabei. Konsistenz zählt mehr als die Frage, welche Zahl „stimmt": ein Kunde, der jeden Monat aus der GPS-Strecke abgerechnet wird, hat eine vergleichbare Reihe; ein Kunde, der aus der jeweils verfügbaren Quelle abgerechnet wird, hat jeden Monat eine Diskussion. Verweist ein Vertrag auf den Fahrzeug-Kilometerstand, nutzen Sie die CAN-Laufleistung und schreiben Sie das in den Vertrag.' },
+        { p: 'Wählen Sie eine Quelle und bleiben Sie dabei. Konsistenz zählt mehr als die Frage, welche Zahl „stimmt“: Ein Kunde, der jeden Monat aus der GPS-Strecke abgerechnet wird, hat eine vergleichbare Reihe; ein Kunde, der aus der jeweils verfügbaren Quelle abgerechnet wird, hat jeden Monat eine Diskussion. Verweist ein Vertrag auf den Fahrzeug-Kilometerstand, nutzen Sie die CAN-Laufleistung und schreiben Sie das in den Vertrag.' },
       ],
     },
   },

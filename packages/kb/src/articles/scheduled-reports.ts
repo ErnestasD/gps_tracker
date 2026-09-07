@@ -90,7 +90,7 @@ export const scheduledReports: KbArticle = {
         { p: '**Treść** raportu to inna sprawa: jest grupowana w dni według strefy czasowej konta, więc dane obejmują ten dzień, który ma na myśli Twoja firma, choć godzina wysyłki jest w UTC.' },
         { h2: 'Wybór odbiorców', id: 'recipients' },
         { p: 'Odbiorcy to adresy, nie użytkownicy. To celowe — tygodniowe zestawienie przebiegu zwykle idzie do księgowej, właściciela albo klienta, a żadne z nich nie potrzebuje tu konta, by dostać PDF.' },
-        { p: 'Ponieważ za adresem nie stoi użytkownik, raport jest pisany w języku i jednostkach **konta**. Ustaw je raz w Ustawienia → Raporty i e-maile; zobacz [Strefy czasowe i jednostki](kb:time-zones-and-units).' },
+        { p: 'Ponieważ za adresem nie stoi użytkownik, raport jest pisany w języku i jednostkach **konta**. Ustaw je raz w Ustawieniach → Raporty i e-maile; zobacz [Strefy czasowe i jednostki](kb:time-zones-and-units).' },
         { h2: 'Gdy raport przestaje przychodzić', id: 'stopped' },
         { ul: [
           'Sprawdź, czy harmonogram nadal istnieje i czy odbiorcy są właściwi — skasowany harmonogram nie zostawia śladu w skrzynce.',
@@ -120,7 +120,7 @@ export const scheduledReports: KbArticle = {
         ] },
         { h2: 'Die Uhrzeit ist UTC', id: 'utc' },
         { callout: 'warning', p: 'Die Versandstunde wird in **UTC** eingetragen, nicht in Ihrer Ortszeit. In Mitteleuropa ist das im Winter eine und im Sommer zwei Stunden hinter der Ortszeit — ein für 6 geplanter Bericht kommt also im Winter um 7 und im Sommer um 8. Wählen Sie die UTC-Stunde, die in der für Sie wichtigen Jahreszeit richtig landet, und rechnen Sie mit der Verschiebung durch die Zeitumstellung.' },
-        { p: 'Der **Inhalt** des Berichts ist eine andere Sache: er wird nach der Zeitzone des Kontos in Tage gruppiert, deckt also den Tag ab, den Ihr Betrieb meint — auch wenn die Versandstunde in UTC steht.' },
+        { p: 'Der **Inhalt** des Berichts ist eine andere Sache: Er wird nach der Zeitzone des Kontos in Tage gruppiert, deckt also den Tag ab, den Ihr Betrieb meint — auch wenn die Versandstunde in UTC steht.' },
         { h2: 'Empfänger wählen', id: 'recipients' },
         { p: 'Empfänger sind Adressen, keine Benutzer. Das ist Absicht — eine wöchentliche Kilometerübersicht geht meist an eine Buchhaltung, einen Inhaber oder einen Kunden, und keiner davon braucht hier ein Konto, um ein PDF zu erhalten.' },
         { p: 'Weil hinter einer Adresse kein Benutzer steht, wird der Bericht in Sprache und Einheiten des **Kontos** geschrieben. Stellen Sie das einmal unter Einstellungen → Berichte und E-Mails ein; siehe [Zeitzonen und Einheiten](kb:time-zones-and-units).' },

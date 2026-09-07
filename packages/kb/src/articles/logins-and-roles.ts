@@ -84,7 +84,7 @@ export const loginsAndRoles: KbArticle = {
         { h2: 'Trzy role', id: 'roles' },
         { table: { head: ['Rola', 'Widzi', 'Może zmieniać'], rows: [
           ['**Podgląd**', 'Mapę, trasy, zdarzenia i raporty swojego konta', 'Nic. Bezpieczny login dla dyspozytora, klienta albo księgowej.'],
-          ['**Menedżer konta**', 'Wszystko na swoim koncie', 'Pojazdy, kierowców, strefy, reguły, serwis — codzienność.'],
+          ['**Menedżer konta**', 'Wszystko na swoim koncie', 'Pojazdy, kierowców, strefy, reguły, konserwację — codzienność.'],
           ['**Administrator organizacji**', 'Każde konto w organizacji', 'Wszystko, a do tego płatności, loginy, markę i integracje.'],
         ] } },
         { p: 'Rolę wybiera się przy tworzeniu loginu i można ją później zmienić. Administrator może nadać wyłącznie rolę niższą od własnej, więc nikt nie awansuje się po cichu sam.' },
@@ -93,7 +93,7 @@ export const loginsAndRoles: KbArticle = {
           'Otwórz konto, do którego ma mieć dostęp.',
           'Dodaj login z jej adresem e-mail i hasłem startowym.',
           'Wybierz rolę. W razie wątpliwości wybierz **Podgląd** — tej roli nie da się niczego zepsuć.',
-          'Przekaż hasło. Po zalogowaniu zmieni je sama w Ustawienia → Bezpieczeństwo.',
+          'Przekaż hasło. Po zalogowaniu zmieni je sama w Ustawieniach → Bezpieczeństwo.',
         ] },
         { h2: 'Usuwanie osoby', id: 'remove' },
         { p: 'Usuń login. Działa natychmiast: aktywne sesje przestają działać przy następnym żądaniu, a nie po jakimś późniejszym wygaśnięciu. Historia jej działań zostaje w dzienniku audytu — po to on jest.' },
@@ -112,7 +112,7 @@ export const loginsAndRoles: KbArticle = {
       blocks: [
         { p: 'Drei Begriffe, die leicht durcheinandergehen. **Konto** ist eine Menge Fahrzeuge. **Zugang** ist E-Mail und Passwort einer Person. **Rolle** ist das, was diese Person darf.' },
         { h2: 'Konten bündeln Fahrzeuge', id: 'accounts' },
-        { p: 'Die meisten kleinen Flotten brauchen genau ein Konto und denken danach nie wieder darüber nach. Konten zählen, wenn die Fahrzeuge verschiedenen Kunden, Standorten oder Gesellschaften gehören: jedes Konto hat eigene Fahrzeuge, Zonen, Berichte und Zugänge, und nichts läuft zwischen ihnen über.' },
+        { p: 'Die meisten kleinen Flotten brauchen genau ein Konto und denken danach nie wieder darüber nach. Konten zählen, wenn die Fahrzeuge verschiedenen Kunden, Standorten oder Gesellschaften gehören: Jedes Konto hat eigene Fahrzeuge, Zonen, Berichte und Zugänge, und nichts läuft zwischen ihnen über.' },
         { callout: 'note', p: 'Wer Ortung weiterverkauft, für den ist ein Konto je Kunde das ganze Modell — siehe [Kundenkonten](kb:customer-accounts).' },
         { h2: 'Die drei Rollen', id: 'roles' },
         { table: { head: ['Rolle', 'Sieht', 'Darf ändern'], rows: [
@@ -129,7 +129,7 @@ export const loginsAndRoles: KbArticle = {
           'Geben Sie das Passwort weiter. Nach dem Anmelden ändert sie es selbst unter Einstellungen → Sicherheit.',
         ] },
         { h2: 'Jemanden entfernen', id: 'remove' },
-        { p: 'Löschen Sie den Zugang. Das wirkt sofort: laufende Sitzungen enden mit der nächsten Anfrage, nicht erst bei irgendeinem Ablauf. Was die Person getan hat und wann, bleibt im Audit-Log — genau dafür gibt es das.' },
+        { p: 'Löschen Sie den Zugang. Das wirkt sofort: Laufende Sitzungen enden mit der nächsten Anfrage, nicht erst bei irgendeinem Ablauf. Was die Person getan hat und wann, bleibt im Audit-Log — genau dafür gibt es das.' },
         { h2: 'Passwörter und Anmeldung', id: 'passwords' },
         { ul: [
           'Passwörter haben mindestens 8 Zeichen und sind für niemanden sichtbar, auch nicht für Admins. Ein Admin kann ein neues setzen; das alte lesen kann niemand.',

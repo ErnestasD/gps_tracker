@@ -976,9 +976,32 @@ test('help: the knowledge base renders in-app, searches, and a contextual link l
   await expect(page.getByTestId('learn-title')).toHaveText(/APN/i)
   await expect(page.getByRole('heading', { name: /APN/i, level: 2 }).first()).toBeVisible()
 
-  // …and the anchors a contextual help link targets actually exist on the page
+  // …and the anchors a contextual help link targets exist AND are scrolled to.
+  //
+  // "Is the heading visible" was the wrong assertion, and it passed for as long as the feature was
+  // broken: these articles are short enough that several headings sit on screen at the top. The
+  // property that matters is that the page MOVED — someone clicking the `?` about the trailing dot
+  // in a DNS record must land on that paragraph, not on paragraph one of a twenty-block article.
   await expect(page.locator('#apn')).toBeVisible()
-  await expect(page.locator('#usage')).toBeVisible()
+
+  /** Where `#dns-dot` sits in the viewport right now. Negative once it is scrolled past the top. */
+  const dnsDotTop = async (): Promise<number> =>
+    page.evaluate(() => {
+      const el = document.getElementById('dns-dot')
+      return el === null ? 99_999 : Math.round(el.getBoundingClientRect().top)
+    })
+
+  // The control: without a fragment the heading is far down a twenty-block article. This is what
+  // the reader used to get from every contextual link, and it is what makes the next assertion
+  // mean something rather than passing on a short page.
+  await page.goto('/app/learn/custom-domain')
+  await expect(page.getByTestId('learn-title')).toBeVisible()
+  expect(await dnsDotTop()).toBeGreaterThan(600)
+
+  // With the fragment, the same heading is at the top.
+  await page.goto('/app/learn/custom-domain#dns-dot')
+  await expect(page.getByTestId('learn-title')).toBeVisible()
+  await expect.poll(dnsDotTop).toBeLessThan(200)
 
   // an article this account may not read is a not-found, not a redacted page
   await page.goto('/app/learn/no-such-article')

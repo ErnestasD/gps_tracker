@@ -29,7 +29,13 @@ export default defineConfig({
         // entries literally named `orbetra-*` sitting in their devtools. `icons/**` is the same
         // mark in raster form and was missed the first time — the filter matched by NAME, not by
         // content; those files are reachable only through DEFAULT_ICONS, which fires on our hosts.
-        globIgnores: ['**/orbetra-*', '**/platform-icon.*', '**/icons/**'],
+        // …and the knowledge base, for the same reason in a different currency. `content-*` is the
+        // whole manual in four languages — ~580 KB — split into its own chunk precisely so that an
+        // operator who never opens the help never downloads it. Precaching it handed that saving
+        // straight back: every user fetched and STORED all 48 articles on first visit, and the
+        // architecture's own justification was false for the surface it was designed for. This is
+        // an app-shell precache; the help is not app shell.
+        globIgnores: ['**/orbetra-*', '**/platform-icon.*', '**/icons/**', '**/assets/content-*'],
         // fonts push the default 2 MiB limit; app-shell precache only, no tiles
         maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
       },

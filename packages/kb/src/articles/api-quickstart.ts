@@ -95,7 +95,7 @@ export const apiQuickstart: KbArticle = {
         { p: 'Wszystko, co pokazuje panel, jest dostępne przez REST API pod tą samą domeną, na której działa Twój panel. Nie ma osobnego hosta API — instalacja z własną marką odpowiada pod własnym adresem, i to właśnie trzyma integrację wewnątrz jednej marki.' },
         { h2: 'Utwórz klucz', id: 'create' },
         { ol: [
-          'Wejdź w **Ustawienia → Klucze API** i utwórz klucz. Nazwij go po systemie, który go użyje, a nie po osobie.',
+          'Wejdź w **Ustawieniach → Klucze API** i utwórz klucz. Nazwij go po systemie, który go użyje, a nie po osobie.',
           'Wybierz zakres: jedno konto albo cała organizacja.',
           'Skopiuj klucz od razu. Pokazuje się raz i później nie da się go odzyskać — jeśli zginie, unieważnij go i zrób nowy.',
         ] },
@@ -108,7 +108,7 @@ export const apiQuickstart: KbArticle = {
           '**Tylko w swoim zakresie.** Klucz przypisany do jednego konta nie zobaczy innego, o cokolwiek zapyta.',
           '**Limit żądań.** Przekroczenie zwraca `429` z nagłówkiem `Retry-After`. Uszanuj go, zamiast ponawiać natychmiast.',
         ] },
-        { h2: 'Endpointy, których użyjesz najpierw', id: 'endpoints' },
+        { h2: 'Punkty końcowe, których użyjesz najpierw', id: 'endpoints' },
         { table: { head: ['Wywołanie', 'Co daje'], rows: [
           ['`GET /v1/devices`', 'Twoje urządzenia z nazwami, tablicami i statusem.'],
           ['`GET /v1/devices/last`', 'Ostatnią znaną pozycję każdego urządzenia — migawkę na żywo w jednym żądaniu.'],
@@ -132,7 +132,7 @@ export const apiQuickstart: KbArticle = {
       summary: 'Einen Schlüssel anlegen, den ersten Aufruf machen und verstehen, was ein Schlüssel darf und was nicht.',
       keywords: ['api', 'rest', 'schlüssel', 'integration', 'curl', 'authentifizierung', 'nur lesen', 'ratenlimit'],
       blocks: [
-        { p: 'Alles, was das Dashboard zeigt, ist über eine REST-API verfügbar — auf derselben Domain, auf der Ihr Dashboard läuft. Es gibt keinen separaten API-Host: eine gebrandete Installation antwortet unter ihrer eigenen Adresse, und genau das hält eine Integration innerhalb einer Marke.' },
+        { p: 'Alles, was das Dashboard zeigt, ist über eine REST-API verfügbar — auf derselben Domain, auf der Ihr Dashboard läuft. Es gibt keinen separaten API-Host: Eine gebrandete Installation antwortet unter ihrer eigenen Adresse, und genau das hält eine Integration innerhalb einer Marke.' },
         { h2: 'Einen Schlüssel anlegen', id: 'create' },
         { ol: [
           'Unter **Einstellungen → API-Schlüssel** einen anlegen. Benennen Sie ihn nach dem System, das ihn nutzt, nicht nach einer Person.',
@@ -144,7 +144,7 @@ export const apiQuickstart: KbArticle = {
         { p: 'Senden Sie den Schlüssel im Header `X-Api-Key`, über HTTPS. `Authorization: Bearer` ist das Sitzungstoken des Dashboards und kein API-Schlüssel — so gesendet wird er abgelehnt.' },
         { h2: 'Was ein Schlüssel darf', id: 'scope' },
         { ul: [
-          '**Nur lesen.** Geräte, Positionen, Fahrten, Ereignisse und Berichte. Schreibzugriff über einen Schlüssel gibt es bewusst nicht: eine Integration, die nur lesen kann, richtet an einer Flotte keinen Schaden an.',
+          '**Nur lesen.** Geräte, Positionen, Fahrten, Ereignisse und Berichte. Schreibzugriff über einen Schlüssel gibt es bewusst nicht: Eine Integration, die nur lesen kann, richtet an einer Flotte keinen Schaden an.',
           '**Nur im eigenen Bereich.** Ein auf ein Konto begrenzter Schlüssel sieht kein anderes, was immer er anfragt.',
           '**Ratenbegrenzt.** Ein Überschreiten liefert `429` mit einem `Retry-After`-Header. Halten Sie sich daran, statt sofort erneut zu versuchen.',
         ] },
@@ -156,7 +156,7 @@ export const apiQuickstart: KbArticle = {
           ['`GET /v1/trips`', 'Fahrten, gruppiert nach Gerät und Tag.'],
           ['`GET /v1/events`', 'Alarme: Geozone, Tempoüberschreitung, Zündung, Stromausfall und die übrigen.'],
         ] } },
-        { h2: 'Pollen oder Webhooks', id: 'webhooks' },
+        { h2: 'Polling oder Webhooks', id: 'webhooks' },
         { callout: 'tip', p: 'Wenn Sie `/v1/events` in einer Schleife abfragen, um zu erfahren, wann etwas passiert ist, nehmen Sie lieber einen Webhook — Sie bekommen das Ereignis im Moment seines Auftretens, ohne Schleife. Siehe [Webhooks](kb:webhooks).' },
         { h2: 'Schlüsselpflege', id: 'hygiene' },
         { ul: [

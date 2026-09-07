@@ -10,7 +10,11 @@ import { PLATFORM_NAME } from '../src/lib/branding.js'
 
 vi.mock('../src/lib/auth.js', () => ({ getCurrentUser: () => currentUser }))
 
-let currentUser: { role: string; entitlements: Record<string, boolean> } | null = null
+/** `accountId: null` is a TENANT-WIDE user; a uuid pins them to one customer's account. */
+let currentUser: { role: string; accountId: string | null; entitlements: Record<string, boolean> } | null = null
+
+/** A customer's account id — what a PINNED user carries. */
+const ACCOUNT = '4f6d0a1e-0000-4000-8000-000000000001'
 
 const ALL_ENTITLEMENTS = {
   whiteLabel: true,
@@ -96,22 +100,22 @@ describe('kbViewer', () => {
 
   it('counts tenant and platform admins as admins, and nobody else', () => {
     for (const role of ['tsp_admin', 'platform_admin']) {
-      currentUser = { role, entitlements: {} }
+      currentUser = { role, accountId: null, entitlements: {} }
       expect(kbViewer(false).isAdmin, role).toBe(true)
     }
     for (const role of ['account_manager', 'viewer']) {
-      currentUser = { role, entitlements: {} }
+      currentUser = { role, accountId: null, entitlements: {} }
       expect(kbViewer(false).isAdmin, role).toBe(false)
     }
   })
 
   it('carries the tenant\'s entitlements through, so a gated article follows the plan', () => {
-    currentUser = { role: 'tsp_admin', entitlements: ALL_ENTITLEMENTS }
+    currentUser = { role: 'tsp_admin', accountId: null, entitlements: ALL_ENTITLEMENTS }
     const v = kbViewer(false)
     expect(v.entitlements).toEqual(ALL_ENTITLEMENTS)
     expect(isVisible(metaBySlug(KB.branding)!, v)).toBe(true)
 
-    currentUser = { role: 'tsp_admin', entitlements: { ...ALL_ENTITLEMENTS, whiteLabel: false } }
+    currentUser = { role: 'tsp_admin', accountId: null, entitlements: { ...ALL_ENTITLEMENTS, whiteLabel: false } }
     expect(isVisible(metaBySlug(KB.branding)!, kbViewer(false))).toBe(false)
   })
 })
@@ -123,7 +127,7 @@ describe('what a reseller\'s customer may be shown', () => {
    * relationship they are not in, with a company they have never heard of.
    */
   it('withholds every platform-business article from a customer on a reseller\'s host', () => {
-    currentUser = { role: 'account_manager', entitlements: ALL_ENTITLEMENTS }
+    currentUser = { role: 'account_manager', accountId: ACCOUNT, entitlements: ALL_ENTITLEMENTS }
     const shown = KB_META.filter((m) => isVisible(m, kbViewer(true))).map((m) => m.slug)
     for (const slug of [KB.plansAndLimits, KB.unpaidWhatHappens]) {
       expect(shown, slug).not.toContain(slug)
@@ -135,20 +139,20 @@ describe('what a reseller\'s customer may be shown', () => {
   })
 
   it('still shows them to the RESELLER on their own host — they pay those invoices', () => {
-    currentUser = { role: 'tsp_admin', entitlements: ALL_ENTITLEMENTS }
+    currentUser = { role: 'tsp_admin', accountId: null, entitlements: ALL_ENTITLEMENTS }
     const shown = KB_META.filter((m) => isVisible(m, kbViewer(true))).map((m) => m.slug)
     expect(shown).toContain(KB.billingAndInvoices)
     expect(shown).toContain(KB.unpaidWhatHappens)
   })
 
   it('shows them on our own host', () => {
-    currentUser = { role: 'tsp_admin', entitlements: ALL_ENTITLEMENTS }
+    currentUser = { role: 'tsp_admin', accountId: null, entitlements: ALL_ENTITLEMENTS }
     const shown = KB_META.filter((m) => isVisible(m, kbViewer(false))).map((m) => m.slug)
     expect(shown).toContain(KB.billingAndInvoices)
   })
 
   it('withholds admin-only articles from an operator, whichever host they are on', () => {
-    currentUser = { role: 'account_manager', entitlements: ALL_ENTITLEMENTS }
+    currentUser = { role: 'account_manager', accountId: ACCOUNT, entitlements: ALL_ENTITLEMENTS }
     for (const whiteLabel of [true, false]) {
       const shown = KB_META.filter((m) => isVisible(m, kbViewer(whiteLabel))).map((m) => m.slug)
       expect(shown, String(whiteLabel)).not.toContain(KB.customerAccounts)

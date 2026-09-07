@@ -43,14 +43,14 @@ export const howTripsAreDetected: KbArticle = {
       summary: 'Kas pradeda kelionę, kas ją baigia, kas laikoma tuščiąja eiga ir kodėl trumpas pasistumdymas kieme nėra reisas.',
       keywords: ['kelionė', 'pradžia', 'pabaiga', 'tuščioji eiga', 'degimas', 'segmentavimas', 'dingusi kelionė'],
       blocks: [
-        { p: 'Seklys siunčia pozicijas, o ne keliones. Vieno pavertimas kitu yra sprendimas, ir tas sprendimas priimamas visada vienodai, kad šiandienos skaičius būtų galima lyginti su praėjusio mėnesio.' },
+        { p: 'Sekiklis siunčia pozicijas, o ne keliones. Vieno pavertimas kitu yra sprendimas, ir tas sprendimas priimamas visada vienodai, kad šiandienos skaičius būtų galima lyginti su praėjusio mėnesio.' },
         { h2: 'Su degimo laidu', id: 'ignition' },
         { p: 'Tai tikslusis atvejis. Užvestas variklis atveria kelionę; porą minučių išjungtas variklis ją uždaro. Trumpa pauzė yra sąmoninga – užgesęs variklis sankryžoje ar vairuotojas, išjungęs jį atidaryti vartų, neturi vieno pristatymo maršruto suskaldyti į dvi keliones.' },
         { h2: 'Be degimo laido', id: 'no-ignition' },
-        { p: 'Turto sekliams ir kištukiniams įrenginiams, kuriems nėra ko skaityti, signalas yra pats judėjimas. Kelionė atsiveria, kai automobilis tikrai juda – greičiau nei pėsčiomis, išsilaikydamas maždaug pusantros minutės, arba nuvažiavęs kelis šimtus metrų, kas įvyksta pirmiau. Ji užsidaro, kai kelias minutes nebelieka reikšmingo poslinkio.' },
+        { p: 'Turto sekikliams ir kištukiniams įrenginiams, kuriems nėra ko skaityti, signalas yra pats judėjimas. Kelionė atsiveria, kai automobilis tikrai juda – greičiau nei pėsčiomis, išsilaikydamas maždaug pusantros minutės, arba nuvažiavęs kelis šimtus metrų, kas įvyksta pirmiau. Ji užsidaro, kai kelias minutes nebelieka reikšmingo poslinkio.' },
         { callout: 'note', p: 'Abi sąlygos egzistuoja tam, kad nei triukšmas, nei raudonas šviesoforas neatvertų ir neuždarytų kelionės. Prie ilgo šviesoforo stovintis automobilis tebėra kelionėje; aikštelės darbuotojo pastumtas automobilis kelionės nepradėjo.' },
         { h2: 'Tuščioji eiga', id: 'idle' },
-        { p: 'Veikiantis variklis ir faktinis nejudėjimas, trunkantis pakankamai ilgai, kad būtų sąmoningas, skaičiuojamas kaip **tuščiosios eigos** laikas. Kiekvienoje kelionėje jis pateikiamas atskirai nuo važiavimo, nes tai kitokia kaina: sudegintas kuras, sukauptos valandos ir nieko nepristatyta. Labai trumpi sustojimai į tuščiąją eigą neįskaitomi – tikslas yra dešimt minučių prie krovos rampos, o ne dvidešimt sekundžių prie „duok kelią" ženklo.' },
+        { p: 'Veikiantis variklis ir faktinis nejudėjimas, trunkantis pakankamai ilgai, kad būtų sąmoningas, skaičiuojamas kaip **tuščiosios eigos** laikas. Kiekvienoje kelionėje jis pateikiamas atskirai nuo važiavimo, nes tai kitokia kaina: sudegintas kuras, sukauptos valandos ir nieko nepristatyta. Labai trumpi sustojimai į tuščiąją eigą neįskaitomi – tikslas yra dešimt minučių prie krovos rampos, o ne dvidešimt sekundžių prie „duok kelią“ ženklo.' },
         { h2: 'Ką įrašo kelionė', id: 'fields' },
         { ul: [
           'Pradžios ir pabaigos laiką bei vietą',

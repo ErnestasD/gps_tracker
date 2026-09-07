@@ -98,7 +98,7 @@ export const routePlanner: KbArticle = {
           '**Auf die Karte klicken** und jeden Stopp dort setzen, wo er hingehört. Am schnellsten für eine Handvoll sichtbarer Orte.',
           '**Eine Liste einfügen** — ein Stopp je Zeile als `Breite,Länge`, optional mit Bezeichnung nach einem zweiten Komma. Das ist der Weg aus einer Tabelle oder einem anderen System.',
         ] },
-        { p: 'Bis zu zwölf Stopps. Die Grenze ist nicht willkürlich: die Zahl möglicher Reihenfolgen wächst explosionsartig, und bei zwölf kommt eine exakte Antwort noch an, während jemand auf den Bildschirm schaut. Ein längerer Tag sind zwei Routen.' },
+        { p: 'Bis zu zwölf Stopps. Die Grenze ist nicht willkürlich: Die Zahl möglicher Reihenfolgen wächst explosionsartig, und bei zwölf kommt eine exakte Antwort noch an, während jemand auf den Bildschirm schaut. Ein längerer Tag sind zwei Routen.' },
         { h2: 'Mit oder ohne Rückweg', id: 'roundtrip' },
         { p: 'Setzen Sie **Zurück zum Start**, wenn das Fahrzeug zum Hof zurückkehrt — dann zählt die letzte Etappe nach Hause in die Summe. Lassen Sie es weg für eine Tour, die beim letzten Kunden endet: ein Kurier, der in Wohnnähe aufhört, oder ein Fahrzeug, das draußen übernachtet. Die beiden Antworten können wirklich verschiedene Reihenfolgen sein, nicht nur verschiedene Summen.' },
         { h2: 'Das Ergebnis lesen', id: 'result' },

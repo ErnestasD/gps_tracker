@@ -29,7 +29,7 @@ export const mapWontLoad: KbArticle = {
           '**A stale page.** A tab left open for days can be running against a version that no longer exists. Reload it fully.',
         ] },
         { h2: 'The map loads but nothing is on it', id: 'no-markers' },
-        { p: 'That is a different problem: the picture is fine and there is nothing to draw. Check that a device has reported a valid position — a vehicle with no fix has no place on a map, by design. See [Position accuracy](kb:position-accuracy) and [A device is not reporting](kb:device-not-reporting).' },
+        { p: 'That is a different problem: the picture is fine and there is nothing to draw. Check that a device has reported a valid position — a vehicle with no fix has no place on a map, by design. See [Position accuracy](kb:position-accuracy) and [Device not reporting](kb:device-not-reporting).' },
       ],
     },
     lt: {
@@ -107,7 +107,7 @@ export const mapWontLoad: KbArticle = {
           '**Eine veraltete Seite.** Ein tagelang offener Tab läuft womöglich gegen eine Version, die es nicht mehr gibt. Vollständig neu laden.',
         ] },
         { h2: 'Die Karte lädt, aber es ist nichts darauf', id: 'no-markers' },
-        { p: 'Das ist ein anderes Problem: das Bild ist in Ordnung, es gibt nur nichts zu zeichnen. Prüfen Sie, ob ein Gerät eine gültige Position gemeldet hat — ein Fahrzeug ohne Fix hat auf einer Karte keinen Ort, und das ist Absicht. Siehe [Positionsgenauigkeit](kb:position-accuracy) und [Ein Gerät meldet sich nicht](kb:device-not-reporting).' },
+        { p: 'Das ist ein anderes Problem: Das Bild ist in Ordnung, es gibt nur nichts zu zeichnen. Prüfen Sie, ob ein Gerät eine gültige Position gemeldet hat — ein Fahrzeug ohne Fix hat auf einer Karte keinen Ort, und das ist Absicht. Siehe [Positionsgenauigkeit](kb:position-accuracy) und [Gerät meldet sich nicht](kb:device-not-reporting).' },
       ],
     },
   },

@@ -8,7 +8,7 @@ export const maintenance: KbArticle = {
   doc: {
     en: {
       title: 'Maintenance reminders',
-      summary: 'Servicing by kilometres, days or engine hours; applying one interval set to a whole fleet; and what "mark as serviced" does.',
+      summary: 'Servicing by kilometres, days or engine hours; applying one interval set to a whole fleet; and what “mark as serviced” does.',
       keywords: ['maintenance', 'service', 'reminder', 'interval', 'oil change', 'engine hours', 'plan', 'due', 'forecast'],
       blocks: [
         { p: 'A reminder is a rule about wear rather than about time on a calendar. It counts down from whichever measure actually wears the vehicle out, and tells you before the number is reached rather than after.' },
@@ -21,7 +21,7 @@ export const maintenance: KbArticle = {
         { p: 'A reminder can carry more than one interval. Whichever runs out first is the one that becomes due, which is exactly how a service book reads: every 15 000 km or every 12 months, whichever comes first.' },
         { h2: 'Creating one', id: 'create' },
         { ol: [
-          'Pick the vehicle and name the job the way a workshop would ("Oil and filter", not "service").',
+          'Pick the vehicle and name the job the way a workshop would (“Oil and filter”, not “service”).',
           'Set the interval, or intervals.',
           'Enter the current odometer or hour reading, so the first countdown starts from the truth rather than from zero.',
         ] },
@@ -37,7 +37,7 @@ export const maintenance: KbArticle = {
     },
     lt: {
       title: 'Priežiūros priminimai',
-      summary: 'Priežiūra pagal kilometrus, dienas ar variklio valandas; vieno intervalų rinkinio pritaikymas visam parkui; ir ką daro „pažymėti atliktu".',
+      summary: 'Priežiūra pagal kilometrus, dienas ar variklio valandas; vieno intervalų rinkinio pritaikymas visam parkui; ir ką daro „pažymėti atliktu“.',
       keywords: ['priežiūra', 'servisas', 'priminimas', 'intervalas', 'tepalų keitimas', 'variklio valandos', 'planas', 'prognozė'],
       blocks: [
         { p: 'Priminimas – tai taisyklė apie nusidėvėjimą, o ne apie datą kalendoriuje. Jis skaičiuoja atgal nuo to mato, kuris automobilį iš tikrųjų dėvi, ir praneša prieš pasiekiant skaičių, o ne po to.' },
@@ -50,7 +50,7 @@ export const maintenance: KbArticle = {
         { p: 'Priminimas gali turėti daugiau nei vieną intervalą. Terminas suveikia pagal tą, kuris pasibaigia pirmas – lygiai taip, kaip skamba serviso knygelė: kas 15 000 km arba kas 12 mėnesių, kas įvyksta pirmiau.' },
         { h2: 'Kaip sukurti', id: 'create' },
         { ol: [
-          'Pasirinkite automobilį ir pavadinkite darbą taip, kaip pavadintų dirbtuvės („Tepalai ir filtras", o ne „servisas").',
+          'Pasirinkite automobilį ir pavadinkite darbą taip, kaip pavadintų dirbtuvės („Tepalai ir filtras“, o ne „servisas“).',
           'Nustatykite intervalą arba intervalus.',
           'Įveskite dabartinį odometro ar valandų rodmenį, kad pirmas skaičiavimas prasidėtų nuo tiesos, o ne nuo nulio.',
         ] },
@@ -66,7 +66,7 @@ export const maintenance: KbArticle = {
     },
     pl: {
       title: 'Przypomnienia serwisowe',
-      summary: 'Serwis według kilometrów, dni albo motogodzin; zastosowanie jednego zestawu interwałów do całej floty; i co robi „oznacz jako wykonane".',
+      summary: 'Serwis według kilometrów, dni albo motogodzin; zastosowanie jednego zestawu interwałów do całej floty; i co robi „oznacz jako wykonane”.',
       keywords: ['serwis', 'przypomnienie', 'interwał', 'wymiana oleju', 'motogodziny', 'plan', 'termin', 'prognoza'],
       blocks: [
         { p: 'Przypomnienie to reguła o zużyciu, a nie o dacie w kalendarzu. Odlicza od tej miary, która faktycznie zużywa pojazd, i mówi zanim liczba zostanie osiągnięta, a nie po.' },
@@ -79,7 +79,7 @@ export const maintenance: KbArticle = {
         { p: 'Przypomnienie może mieć więcej niż jeden interwał. Termin wyznacza ten, który skończy się pierwszy — dokładnie tak, jak czyta się książkę serwisową: co 15 000 km albo co 12 miesięcy, cokolwiek nastąpi wcześniej.' },
         { h2: 'Tworzenie', id: 'create' },
         { ol: [
-          'Wybierz pojazd i nazwij pracę tak, jak nazwałby ją warsztat („Olej i filtr", nie „serwis").',
+          'Wybierz pojazd i nazwij pracę tak, jak nazwałby ją warsztat („Olej i filtr”, nie „serwis”).',
           'Ustaw interwał albo interwały.',
           'Wpisz bieżący stan licznika lub motogodzin, żeby pierwsze odliczanie zaczęło się od prawdy, a nie od zera.',
         ] },
@@ -95,7 +95,7 @@ export const maintenance: KbArticle = {
     },
     de: {
       title: 'Wartungserinnerungen',
-      summary: 'Service nach Kilometern, Tagen oder Motorstunden; einen Intervallsatz auf die ganze Flotte anwenden; und was „als erledigt markieren" bewirkt.',
+      summary: 'Service nach Kilometern, Tagen oder Motorstunden; einen Intervallsatz auf die ganze Flotte anwenden; und was „als erledigt markieren“ bewirkt.',
       keywords: ['wartung', 'service', 'erinnerung', 'intervall', 'ölwechsel', 'motorstunden', 'plan', 'fällig', 'prognose'],
       blocks: [
         { p: 'Eine Erinnerung ist eine Regel über Verschleiß, nicht über ein Kalenderdatum. Sie zählt von dem Maß herunter, das das Fahrzeug tatsächlich abnutzt, und meldet sich, bevor die Zahl erreicht ist, nicht danach.' },
@@ -105,10 +105,10 @@ export const maintenance: KbArticle = {
           ['**Tage**', 'Untersuchungen, versicherungsgebundene Prüfungen, alles, was der Kalender unabhängig von der Nutzung verlangt.'],
           ['**Motorstunden**', 'Maschinen, Kühlaggregate, Krane — alles, was im Stand arbeitet, wo Kilometer den Verschleiß stark untertreiben.'],
         ] } },
-        { p: 'Eine Erinnerung kann mehrere Intervalle tragen. Fällig wird sie durch das, was zuerst abläuft — genau so, wie ein Serviceheft liest: alle 15 000 km oder alle 12 Monate, je nachdem was früher eintritt.' },
+        { p: 'Eine Erinnerung kann mehrere Intervalle tragen. Fällig wird sie durch das, was zuerst abläuft — genau so, wie ein Serviceheft liest: alle 15.000 km oder alle 12 Monate, je nachdem was früher eintritt.' },
         { h2: 'Eine anlegen', id: 'create' },
         { ol: [
-          'Fahrzeug wählen und die Arbeit so benennen, wie eine Werkstatt sie nennt („Öl und Filter", nicht „Service").',
+          'Fahrzeug wählen und die Arbeit so benennen, wie eine Werkstatt sie nennt („Öl und Filter“, nicht „Service“).',
           'Intervall oder Intervalle setzen.',
           'Den aktuellen Kilometer- oder Stundenstand eintragen, damit das erste Herunterzählen von der Wahrheit startet und nicht von null.',
         ] },
@@ -116,10 +116,10 @@ export const maintenance: KbArticle = {
         { p: 'Ein **Plan** ist ein benannter Satz von Positionen — Öl in einem Intervall, Bremsenprüfung in einem anderen, eine Jahresuntersuchung — der sich in einer Aktion auf viele Fahrzeuge anwenden lässt. Das Anwenden legt die fehlenden Erinnerungen an und überspringt vorhandene, sodass ein Plan beim Wachsen der Flotte erneut angewandt werden kann, ohne Dubletten zu erzeugen.' },
         { callout: 'tip', p: 'Bauen Sie den Plan einmal am typischsten Fahrzeug und wenden Sie ihn dann auf jedes ähnliche an. Das ist der Unterschied zwischen einer Viertelstunde Einrichtung und einem Nachmittag mit denselben Formularen.' },
         { h2: 'Als erledigt markieren', id: 'serviced' },
-        { p: 'Ist die Arbeit getan, markieren Sie die Erinnerung als erledigt. Das Herunterzählen startet vom aktuellen Kilometerstand oder Datum neu, und in die Servicehistorie des Fahrzeugs wird ein Eintrag mit Kosten, Werkstatt und Ihren Notizen geschrieben — siehe [Die Fahrzeugkarte](kb:vehicle-card).' },
-        { p: 'Diese Historie ist der Sinn der ganzen Funktion. Erinnerungen verhindern einen verpassten Service; die Historie beweist Monate später einem Käufer oder Versicherer, dass keiner verpasst wurde.' },
+        { p: 'Ist die Arbeit getan, markieren Sie die Erinnerung als erledigt. Das Herunterzählen startet vom aktuellen Kilometerstand oder Datum neu, und in die Serviceheft des Fahrzeugs wird ein Eintrag mit Kosten, Werkstatt und Ihren Notizen geschrieben — siehe [Die Fahrzeugkarte](kb:vehicle-card).' },
+        { p: 'Dieser Verlauf ist der Sinn der ganzen Funktion. Erinnerungen verhindern einen verpassten Service; der Verlauf beweist Monate später einem Käufer oder Versicherer, dass keiner verpasst wurde.' },
         { h2: 'Die Prognose', id: 'forecast' },
-        { p: 'Weil die Plattform weiß, wie viel jedes Fahrzeug wirklich fährt, lässt sich eine kilometerbasierte Erinnerung in ein Datum übersetzen: bei der jüngsten Laufleistung dieses Fahrzeugs wird sie in etwa drei Wochen fällig. Damit wird aus einem Werkstatttermin statt Hektik eine Planung.' },
+        { p: 'Weil die Plattform weiß, wie viel jedes Fahrzeug wirklich fährt, lässt sich eine kilometerbasierte Erinnerung in ein Datum übersetzen: Bei der jüngsten Laufleistung dieses Fahrzeugs wird sie in etwa drei Wochen fällig. Damit wird aus einem Werkstatttermin statt Hektik eine Planung.' },
       ],
     },
   },

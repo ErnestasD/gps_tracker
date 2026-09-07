@@ -27,7 +27,7 @@ export const drivers: KbArticle = {
         { ul: [
           'Trips filtered by driver, so a route dispute has an answer.',
           'Per-driver behaviour patterns: speeding, idling, hours out.',
-          'A defensible answer to "who was driving" for an insurance claim or a parking fine.',
+          'A defensible answer to “who was driving” for an insurance claim or a parking fine.',
         ] },
         { h2: 'Tell your drivers', id: 'privacy' },
         { p: 'Recording who drove is processing personal data about an identified person, and it is subject to rules — informing them in advance is not optional, and a private-use policy has to be written down. See [Tracking employees lawfully](kb:tracking-employees-lawfully) before you switch identification on.' },
@@ -38,11 +38,11 @@ export const drivers: KbArticle = {
       summary: 'Vairuotojų sąrašas, atpažinimas iButton ar RFID kortele ir vairuotojo priskyrimas kelionei atgaline data.',
       keywords: ['vairuotojas', 'ibutton', 'rfid', 'atpažinimas', 'priskyrimas', 'sąrašas', 'pažymėjimas', 'bendras automobilis'],
       blocks: [
-        { p: 'Seklys žino, kuris automobilis judėjo. Žinoti, **kas** jį judino, yra atskira problema, ir kaip tik ji svarbi, kai automobiliu naudojasi keli žmonės.' },
+        { p: 'Sekiklis žino, kuris automobilis judėjo. Žinoti, **kas** jį judino, yra atskira problema, ir kaip tik ji svarbi, kai automobiliu naudojasi keli žmonės.' },
         { h2: 'Sąrašas', id: 'roster' },
         { p: 'Kiekvienas vairuotojas – įrašas: vardas, pažymėjimo numeris, telefonas, aktyvumo žyma ir, kur automobiliai turi skaitytuvą, iButton ar RFID identifikatorius. Buvusius vairuotojus palikus **neaktyvius**, o ne ištrynus, išsaugoma istorija, kas ką vairavo, o kaip tik dėl to sąrašas ir yra.' },
         { h2: 'Automatinis atpažinimas', id: 'ibutton' },
-        { p: 'Kur prie seklio prijungtas skaitytuvas, vairuotojas prideda savo raktų pakabuką ar kortelę, ir seklys kartu su pozicijomis siunčia identifikatorių. Vieną kartą susiekite tą identifikatorių su vairuotojo įrašu, ir nuo tol kiekviena kelionė tuo automobiliu vairuotoją įvardija pati.' },
+        { p: 'Kur prie sekiklio prijungtas skaitytuvas, vairuotojas prideda savo raktų pakabuką ar kortelę, ir sekiklis kartu su pozicijomis siunčia identifikatorių. Vieną kartą susiekite tą identifikatorių su vairuotojo įrašu, ir nuo tol kiekviena kelionė tuo automobiliu vairuotoją įvardija pati.' },
         { ul: [
           'Identifikatorius – 8 iki 32 šešioliktainių simbolių; nukopijuokite nuo pakabuko arba nuskaitykite automobilio skydelyje.',
           'Vienas identifikatorius priklauso vienam vairuotojui. Priskirti jau užregistruotą pakabuką neleidžiama, o ne tyliai perkeliama, nes du vairuotojai, dalijantys vieną tapatybę, padaro dviprasmišką kiekvieną kelionės įrašą.',
@@ -54,7 +54,7 @@ export const drivers: KbArticle = {
         { ul: [
           'Kelionės, filtruojamos pagal vairuotoją, kad ginčas dėl maršruto turėtų atsakymą.',
           'Elgsenos dėsningumus pagal vairuotoją: greičio viršijimus, tuščiąją eigą, valandas kelyje.',
-          'Pagrįstą atsakymą į klausimą „kas vairavo" draudimo įvykiui ar baudai už stovėjimą.',
+          'Pagrįstą atsakymą į klausimą „kas vairavo“ draudimo įvykiui ar baudai už stovėjimą.',
         ] },
         { h2: 'Pasakykite vairuotojams', id: 'privacy' },
         { p: 'Įrašinėti, kas vairavo, reiškia tvarkyti identifikuoto asmens duomenis, o tam taikomos taisyklės – informuoti iš anksto nėra pasirinkimas, ir asmeninio naudojimo tvarka turi būti surašyta. Prieš įjungdami atpažinimą, perskaitykite [Teisėtas darbuotojų sekimas](kb:tracking-employees-lawfully).' },
@@ -81,7 +81,7 @@ export const drivers: KbArticle = {
         { ul: [
           'Trasy filtrowane po kierowcy, żeby spór o trasę miał odpowiedź.',
           'Wzorce zachowań per kierowca: przekroczenia, praca na postoju, godziny w trasie.',
-          'Możliwą do obrony odpowiedź na „kto prowadził" przy szkodzie ubezpieczeniowej albo mandacie.',
+          'Możliwą do obrony odpowiedź na „kto prowadził” przy szkodzie ubezpieczeniowej albo mandacie.',
         ] },
         { h2: 'Powiedz kierowcom', id: 'privacy' },
         { p: 'Zapisywanie, kto prowadził, to przetwarzanie danych osobowych zidentyfikowanej osoby i podlega przepisom — poinformowanie z wyprzedzeniem nie jest opcjonalne, a zasady użytku prywatnego trzeba spisać. Przed włączeniem identyfikacji przeczytaj [Legalne monitorowanie pracowników](kb:tracking-employees-lawfully).' },
@@ -94,7 +94,7 @@ export const drivers: KbArticle = {
       blocks: [
         { p: 'Ein Tracker weiß, welches Fahrzeug gefahren ist. Zu wissen, **wer** es gefahren hat, ist ein eigenes Problem — und genau das zählt, wenn sich mehrere ein Fahrzeug teilen.' },
         { h2: 'Der Fahrerstamm', id: 'roster' },
-        { p: 'Jeder Fahrer ist ein Datensatz: Name, Führerscheinnummer, Telefon, ein Aktiv-Kennzeichen und — wo die Fahrzeuge einen Leser haben — eine iButton- oder RFID-Kennung. Ehemalige Fahrer als **inaktiv** zu führen statt sie zu löschen, bewahrt die Historie, wer was gefahren ist — und dafür gibt es den Stamm.' },
+        { p: 'Jeder Fahrer ist ein Datensatz: Name, Führerscheinnummer, Telefon, ein Aktiv-Kennzeichen und — wo die Fahrzeuge einen Leser haben — eine iButton- oder RFID-Kennung. Ehemalige Fahrer als **inaktiv** zu führen statt sie zu löschen, bewahrt den Verlauf, wer was gefahren hat — und dafür gibt es den Stamm.' },
         { h2: 'Automatische Erkennung', id: 'ibutton' },
         { p: 'Wo ein Leser am Tracker hängt, hält der Fahrer seinen Chip oder seine Karte an, und der Tracker meldet die Kennung mit den Positionen. Verknüpfen Sie diese Kennung einmal mit einem Fahrerdatensatz, und ab dann benennt jede Fahrt in diesem Fahrzeug ihren Fahrer selbst.' },
         { ul: [
@@ -108,7 +108,7 @@ export const drivers: KbArticle = {
         { ul: [
           'Nach Fahrer gefilterte Fahrten, damit ein Streit über eine Route eine Antwort hat.',
           'Verhaltensmuster je Fahrer: zu schnell, Leerlauf, Stunden unterwegs.',
-          'Eine belastbare Antwort auf „wer ist gefahren" für einen Versicherungsfall oder einen Strafzettel.',
+          'Eine belastbare Antwort auf „wer ist gefahren“ für einen Versicherungsfall oder einen Strafzettel.',
         ] },
         { h2: 'Sagen Sie es Ihren Fahrern', id: 'privacy' },
         { p: 'Festzuhalten, wer gefahren ist, ist die Verarbeitung personenbezogener Daten einer identifizierten Person und unterliegt Regeln — vorherige Information ist nicht optional, und eine Regelung zur Privatnutzung gehört schriftlich festgehalten. Lesen Sie [Mitarbeiter rechtmäßig orten](kb:tracking-employees-lawfully), bevor Sie die Erkennung einschalten.' },

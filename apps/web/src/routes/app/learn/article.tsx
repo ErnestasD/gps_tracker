@@ -1,6 +1,6 @@
 import { Link } from '@tanstack/react-router'
 import { ArrowLeft, ArrowRight, BookOpen } from 'lucide-react'
-import { useMemo } from 'react'
+import { useEffect, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { KB_CATEGORIES, articleBySlug, visibleArticles } from '@orbetra/kb'
@@ -23,6 +23,27 @@ export function LearnArticlePage({ slug }: { slug: string }) {
   const { lang, viewer, product } = useKb()
   const articles = useMemo(() => visibleArticles(KB_ARTICLES, viewer), [viewer])
   const article = articleBySlug(articles, slug)
+
+  /**
+   * Land on the heading the link asked for.
+   *
+   * A contextual `?` opens `/app/learn/<slug>#<anchor>` in a NEW TAB, so this is a cold document
+   * load — and by the time it happens the browser has long given up on the fragment: the `/app`
+   * guard awaits a session refresh and a map-token fetch, and this page is the tree's only lazily
+   * imported route, so the heading does not exist in the DOM until well after the load event.
+   * Neither the browser's native fragment scroll nor the router's own hash handling can bridge
+   * that; both fire while the article is still a promise.
+   *
+   * Keyed on the slug so following a `kb:` link inside an article scrolls to the top of the new
+   * one rather than holding the previous article's fragment.
+   */
+  useEffect(() => {
+    const anchor = window.location.hash.slice(1)
+    if (anchor === '') return
+    // one frame after paint — the blocks render synchronously once the chunk is in
+    const raf = requestAnimationFrame(() => document.getElementById(anchor)?.scrollIntoView())
+    return () => cancelAnimationFrame(raf)
+  }, [slug, article])
 
   if (article === undefined) {
     return (

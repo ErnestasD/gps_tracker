@@ -83,7 +83,7 @@ export const emailsToYourCustomers: KbArticle = {
         { ul: [
           'Przy przekazaniu poproś nowego klienta o jednorazowe dodanie nadawcy do książki adresowej. To trzydzieści sekund, a zapobiega najczęstszej reklamacji, jaką dostaniesz.',
           'Do alertów używaj prawdziwych, monitorowanych adresów. Wspólna skrzynka, której nikt nie czyta, jest gorsza niż jedna wskazana osoba.',
-          'Adres, który trwale odrzuca pocztę, zostaje zapamiętany i nie jest ponownie zapisywany — to chroni dostarczalność wszystkich innych wiadomości. Jeśli jeden odbiorca przestał dostawać pocztę, sprawdź to w pierwszej kolejności.',
+          'Adres, który trwale odrzuca pocztę, zostaje zapamiętany i nie wysyłamy już na niego kolejnych wiadomości — to chroni dostarczalność wszystkich innych wiadomości. Jeśli jeden odbiorca przestał dostawać pocztę, sprawdź to w pierwszej kolejności.',
         ] },
         { h2: 'W jakim języku i jednostkach dostają', id: 'language' },
         { p: 'Wiadomości są pisane w języku, jednostkach i strefie czasowej każdego konta — ustawianych na koncie klienta, nie na osobie, bo wielu odbiorców nie ma w ogóle loginu. Ustaw to przy tworzeniu konta; zobacz [Strefy czasowe i jednostki](kb:time-zones-and-units).' },

@@ -6,7 +6,8 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
-    "test": "vitest run"
+    "test": "vitest run",
+    "gen:meta": "tsx scripts/gen-meta.ts"
   },
   "devDependencies": {
     "eslint": "^9.30.0",

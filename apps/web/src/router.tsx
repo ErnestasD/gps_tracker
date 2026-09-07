@@ -448,7 +448,20 @@ const routeTree = rootRoute.addChildren([
   appRoute.addChildren([appIndexRoute, dashboardRoute, mapRoute, devicesRoute, accountsRoute, driversRoute, maintenanceRoute, tripsRoute, routingRoute, playbackRoute, geofencesRoute, rulesRoute, eventsRoute, reportsRoute, apiKeysRoute, webhooksRoute, platformRoute, affiliatesRoute, brandingRoute, billingRoute, auditRoute, settingsRoute, learnRoute, learnArticleRoute]),
 ])
 
-export const router = createRouter({ routeTree })
+/**
+ * `scrollRestoration` is what makes a `#fragment` work at all.
+ *
+ * In router-core the hash handler — `document.getElementById(hash)?.scrollIntoView(...)` — lives
+ * INSIDE `setupScrollRestoration`, which only runs when this option is set. Without it every
+ * contextual help link (`/app/learn/custom-domain#dns-dot`) resolved its anchor correctly, rendered
+ * correctly, and left the reader at the top of the article. apps/site has always set it; this tree
+ * never did, so the defect was invisible to anyone comparing the two.
+ *
+ * It is not sufficient on its own — see the hash effect in the learn route, which covers the cold
+ * new-tab load of a lazily-imported page — but it is what makes an in-app navigation to a heading
+ * behave the way every other site does.
+ */
+export const router = createRouter({ routeTree, scrollRestoration: true })
 
 declare module '@tanstack/react-router' {
   interface Register {

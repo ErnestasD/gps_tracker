@@ -81,3 +81,35 @@ describe('prose', () => {
     }
   })
 })
+
+/**
+ * One destination, one name.
+ *
+ * A cross-link's label is the only thing a reader has to recognise where it goes. When the same
+ * article is called "Retiring a device" in one place and "Retiring and erasing a device" in another,
+ * a reader cannot tell they are the same page — and the 2026-09-07 prose audit found five such
+ * targets in Polish alone, plus more in German. Nothing structural was wrong with any of them: every
+ * link resolved, so the link test stayed green.
+ *
+ * The rule is deliberately weaker than "the label must equal the target's title": a good label is
+ * often a shortened title, and forcing them equal would make every title edit a six-file edit. What
+ * it forbids is DISAGREEING with yourself in one language.
+ */
+describe('cross-links', () => {
+  it('call each target by one name within a language', () => {
+    const seen = new Map<string, Set<string>>() // "lang:slug" → labels used for it
+    for (const a of KB_ARTICLES) {
+      for (const lang of KB_LANGS) {
+        for (const [, label, slug] of bodyText(a.doc[lang]).matchAll(/\[([^\]]+)\]\(kb:([a-z0-9-]+)\)/g)) {
+          const key = `${lang}:${slug!}`
+          const set = seen.get(key) ?? new Set<string>()
+          set.add(label!)
+          seen.set(key, set)
+        }
+      }
+    }
+    for (const [key, labels] of seen) {
+      expect([...labels].sort(), `${key} is linked under ${labels.size} different names`).toHaveLength(1)
+    }
+  })
+})

@@ -1,5 +1,6 @@
 import { KB, isVisible, type KbArticle, type KbLang, type KbViewer } from '@orbetra/kb'
 
+import { isOverseer } from './accountContext'
 import { getCurrentUser } from './auth'
 import { PLATFORM_NAME, type Branding } from './branding'
 
@@ -22,17 +23,25 @@ export const kbPath = (slug: string): string => `/app/learn/${slug}`
  * Who is reading, for the audience gates.
  *
  * `whiteLabel` is the decisive one: on a reseller's own host the reader may be that reseller's
- * customer, and articles about the platform's own plans, invoices and programme are withheld
- * entirely — naming a commercial relationship they are not in is the same leak class as showing
- * our logo (see packages/kb's own brand test).
+ * customer, and articles about the platform's own plans and invoices are withheld — naming a
+ * commercial relationship they are not in is the same leak class as showing our logo (see
+ * packages/kb's own brand test).
+ *
+ * `isAdmin` REQUIRES A TENANT-WIDE ADMIN, not merely the admin role, and that distinction is the
+ * whole safety of the sentence above. `POST /v1/users` accepts `{role:'tsp_admin', accountId:<uuid>}`
+ * — `canGrantRole('tsp_admin','tsp_admin')` is true — so a reseller can pin an admin to ONE of their
+ * customers' accounts, and that person is the customer's admin, not ours. Reading the role alone let
+ * them through the `platformOnly` gate on the reseller's own host, which is precisely the reader it
+ * exists to stop. The API already defends four routes with the same rule (`tenantWide` in
+ * apps/api/src/routes/crud.ts) and this app already spells the predicate out in `isOverseer`; this
+ * reuses it rather than writing a third, subtly different copy.
  */
 export function kbViewer(whiteLabel: boolean): KbViewer {
   const user = getCurrentUser()
-  const role = user?.role ?? ''
   return {
     surface: 'app',
     whiteLabel,
-    isAdmin: role === 'platform_admin' || role === 'tsp_admin',
+    isAdmin: isOverseer(),
     ...(user !== null ? { entitlements: user.entitlements } : {}),
   }
 }
