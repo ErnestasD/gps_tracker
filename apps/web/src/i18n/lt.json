@@ -314,7 +314,8 @@
       "document": "Dokumentas",
       "maintenancePlan": "Priežiūros planas",
       "branding_asset": "Prekės ženklo paveikslėlis",
-      "deal_registration": "Sandorio registracija"
+      "deal_registration": "Sandorio registracija",
+      "sendingDomain": "Siuntimo domenas"
     },
     "a": {
       "create": "Sukurta",
@@ -2066,5 +2067,29 @@
       "colors": "Pasirinkite pagrindinę spalvą",
       "own_domain": "Pereikite prie savo domeno — mūsiškiame jūsų klientai mato mūsų hostą"
     }
+  },
+  "sending": {
+    "title": "Siųskite laiškus savo adresu",
+    "desc": "Kol nepatvirtinsite savo domeno, pranešimai ir paskyros laiškai išeina mūsų adresu. Viskas laiško viduje jau jūsų; čia — „From“ eilutė.",
+    "unavailable": "Šioje sistemoje dar neįjungta. Jūsų laiškai toliau siunčiami, ir niekas, ką jau susitvarkėte, nenukenčia.",
+    "mailboxLabel": "Dėžutės vardas",
+    "domainLabel": "Jūsų domenas",
+    "add": "Nustatyti siuntimo domeną",
+    "verify": "Tikrinti patvirtinimą",
+    "remove": "Šalinti",
+    "copied": "Nukopijuota",
+    "recordType": "Tipas",
+    "recordName": "Vardas / Host",
+    "recordValue": "Reikšmė / Taikinys",
+    "pendingNote": "Įrašykite šiuos tris įrašus į savo DNS ir spauskite Tikrinti. Kol nepatvirtinta, laiškai toliau eina mūsų adresu — niekas nesustoja.",
+    "slowNote": "Patvirtinimas gali užtrukti iki valandos po įrašų paskelbimo. Tai lėčiausias viso nustatymo žingsnis ir belieka palaukti.",
+    "badDomain": "Toks domenas arba dėžutės vardas netinka.",
+    "upstreamError": "Nepavyko pasiekti mūsų pašto tiekėjo. Tai mūsų pusės klaida — pabandykite netrukus.",
+    "status": {
+      "pending": "Laukiama DNS",
+      "verified": "Patvirtinta",
+      "failed": "Nepatvirtinta"
+    },
+    "ownershipNote": "Įrašykite šį TXT įrašą į savo DNS ir spauskite Tikrinti. Jis įrodo, kad domenas jūsų – kol jis neatsiranda, jūsų vardu nieko nesukuriama. Laiškai visą tą laiką toliau siunčiami mūsų adresu."
   }
 }

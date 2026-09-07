@@ -14,6 +14,7 @@ export const customerAccounts: KbArticle = {
       blocks: [
         { p: 'An account is one customer. Everything belongs to exactly one: vehicles, zones, rules, drivers, reports and logins. That boundary is not a filter you can widen — it is enforced everywhere, so no query, report or API key can reach across it.' },
         { h2: 'Creating one', id: 'create' },
+        { callout: 'note', p: 'This needs a working address first. Until your workspace has a verified domain — your own, or a subdomain of the platform — creating a customer, inviting a colleague and making a public tracking link are all held back, because your customers would have nowhere of yours to arrive at. See [Your own domain](kb:custom-domain). Everything else stays open the whole time: sign in, add devices, import a fleet.' },
         { ol: [
           'Create the account with the customer\'s name and their time zone. The time zone decides where the day boundary falls in their reports — see [Time zones and units](kb:time-zones-and-units).',
           'Add a login: their e-mail address and a starting password. Choose the role — a customer who should see everything but change nothing is a **Viewer**; one who runs their own fleet is an **Account manager**. See [Logins and roles](kb:logins-and-roles).',
@@ -41,6 +42,7 @@ export const customerAccounts: KbArticle = {
       blocks: [
         { p: 'Paskyra – tai vienas klientas. Viskas priklauso lygiai vienai paskyrai: automobiliai, zonos, taisyklės, vairuotojai, ataskaitos ir prisijungimai. Ši riba nėra filtras, kurį galima praplėsti – ji užtikrinama visur, tad nė viena užklausa, ataskaita ar API raktas jos neperžengia.' },
         { h2: 'Kaip sukurti', id: 'create' },
+        { callout: 'note', p: 'Pirmiausia reikia veikiančio adreso. Kol jūsų darbo sritis neturi patvirtinto domeno – savo arba platformos subdomeno – kliento kūrimas, kolegos pakvietimas ir viešos sekimo nuorodos kūrimas yra sulaikomi, nes jūsų klientai neturėtų kur pas jus atvykti. Žr. [Nuosavas domenas](kb:custom-domain). Visa kita visą laiką atverta: prisijungimas, įrenginių pridėjimas, autoparko importas.' },
         { ol: [
           'Sukurkite paskyrą su kliento pavadinimu ir jo laiko juosta. Laiko juosta lemia, kaip jo ataskaitose skaidomos dienos – žr. [Laiko juostos ir vienetai](kb:time-zones-and-units).',
           'Pridėkite prisijungimą: jo el. pašto adresą ir pradinį slaptažodį. Parinkite rolę – klientui, kuris turi žiūrėti, bet nekeisti, tinka **Stebėtojas**; tvarkančiam savo autoparką – **Paskyros valdytojas**. Žr. [Prisijungimai ir rolės](kb:logins-and-roles).',
@@ -68,6 +70,7 @@ export const customerAccounts: KbArticle = {
       blocks: [
         { p: 'Konto to jeden klient. Wszystko należy do dokładnie jednego: pojazdy, strefy, reguły, kierowcy, raporty i loginy. Ta granica nie jest filtrem, który da się poszerzyć — jest egzekwowana wszędzie, więc żadne zapytanie, raport ani klucz API jej nie przekroczy.' },
         { h2: 'Tworzenie', id: 'create' },
+        { callout: 'note', p: 'Najpierw potrzebny jest działający adres. Dopóki Twoja przestrzeń nie ma zweryfikowanej domeny — własnej albo subdomeny platformy — utworzenie klienta, zaproszenie współpracownika i stworzenie publicznego linku do śledzenia są wstrzymane, bo Twoi klienci nie mieliby dokąd do Ciebie trafić. Zobacz [Własna domena](kb:custom-domain). Cała reszta jest przez ten czas otwarta: logowanie, dodawanie urządzeń, import floty.' },
         { ol: [
           'Utwórz konto z nazwą klienta i jego strefą czasową. Strefa decyduje, jak jego raporty tną dni — zobacz [Strefy czasowe i jednostki](kb:time-zones-and-units).',
           'Dodaj login: jego adres e-mail i hasło startowe. Wybierz rolę — klient, który ma patrzeć, a nie zmieniać, to **Podgląd**; ten, który prowadzi własną flotę, to **Menedżer konta**. Zobacz [Loginy i role](kb:logins-and-roles).',
@@ -95,6 +98,7 @@ export const customerAccounts: KbArticle = {
       blocks: [
         { p: 'Ein Konto ist ein Kunde. Alles gehört zu genau einem: Fahrzeuge, Zonen, Regeln, Fahrer, Berichte und Zugänge. Diese Grenze ist kein Filter, den man weiten kann — sie wird überall durchgesetzt, sodass keine Abfrage, kein Bericht und kein API-Schlüssel über sie hinausreicht.' },
         { h2: 'Eines anlegen', id: 'create' },
+        { callout: 'note', p: 'Dafür braucht es zuerst eine funktionierende Adresse. Solange Ihr Arbeitsbereich keine bestätigte Domain hat — eine eigene oder eine Subdomain der Plattform — sind das Anlegen eines Kunden, das Einladen von Kolleginnen und Kollegen und das Erstellen eines öffentlichen Tracking-Links gesperrt, weil Ihre Kunden nirgendwo bei Ihnen ankommen könnten. Siehe [Eigene Domain](kb:custom-domain). Alles andere bleibt die ganze Zeit offen: anmelden, Geräte anlegen, eine Flotte importieren.' },
         { ol: [
           'Konto mit dem Namen des Kunden und seiner Zeitzone anlegen. Die Zeitzone bestimmt, wie seine Berichte Tage schneiden — siehe [Zeitzonen und Einheiten](kb:time-zones-and-units).',
           'Zugang anlegen: E-Mail-Adresse und Startpasswort. Rolle wählen — ein Kunde, der schauen und nicht ändern soll, ist **Betrachter**; wer die eigene Flotte führt, ist **Kontomanager**. Siehe [Zugänge und Rollen](kb:logins-and-roles).',

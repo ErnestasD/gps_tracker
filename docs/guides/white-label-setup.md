@@ -3,9 +3,12 @@
 A guide for partners on a **TSP plan**. Everything here is done by you, in your own account and your
 own DNS. It takes about twenty minutes, plus however long your DNS provider takes to publish.
 
-By the end, your customers sign in at your address, see your logo and colours, and read mail written
-in your name. Our name appears nowhere they look — with one exception we are honest about in Part 3:
-the `From:` line of that mail is still ours today, with Reply-To pointing at you.
+By the end, your customers sign in at your address, see your logo and colours, and receive mail from
+your own address. Nothing they open names us.
+
+The one place our name still appears is your **DNS zone** — the record you point at us in Part 1, and
+the `_orbetra-verify` label beside it. Those are visible to anyone who looks up your domain, and no
+setting removes them; only a change on our side will. Nobody encounters them by using the product.
 
 ---
 
@@ -71,8 +74,8 @@ customers will use, for example `fleet.yourcompany.com`. Press Add.
 > The name starts with an underscore on purpose. The next step puts a `CNAME` on `fleet`, and DNS
 > forbids a `CNAME` sharing a name with any other record — Cloudflare and Route 53 both refuse it. A
 > separate `_orbetra-verify` name sidesteps that entirely, the same way `_dmarc` and
-> `_acme-challenge` do. **Leave it published**: we re-check it periodically, and removing it later
-> will eventually mark the domain unverified.
+> `_acme-challenge` do. **Leave it published** — it costs nothing, and it is what lets the domain be
+> re-checked later without you having to set it up again.
 
 **Step 3 — point it at us.** This is a **separate record** and the step people miss. Proving you own
 the domain does not make it lead anywhere.
@@ -127,22 +130,28 @@ not offer to install an app whose icon they cannot size.
 
 ---
 
-## Part 3 — Your sending address (coming soon)
-
-> **Not available yet.** Today your mail is sent from our address with **Reply-To set to your
-> support address**, so a customer pressing Reply reaches you. Everything inside the message —
-> logo, colours, product name, links — is already yours. This section describes the step that
-> removes the last line, and is published so you know it is coming and what it will ask of you.
+## Part 3 — Your sending address (10 minutes, plus DNS)
 
 Without this step, e-mail arrives from our address. Everything inside the message is yours; the
 "From" line is not.
 
-Settings → Branding → **Sending domain**.
+Settings → Branding → **Send mail from your own address**.
 
-**Step 1** — enter the domain you want to send from (`yourcompany.com`) and the mailbox name
-(`alerts`, `noreply`, `fleet` — anything). Press Add.
+> **If the card says it is not available on this installation**, the platform has not enabled mail
+> identities yet. Nothing is wrong on your side and nothing you have set up is affected — your mail
+> keeps going out as it does today. The rest of this section is what you will do once it is on.
 
-**Step 2** — we show **three CNAME records**. Add all three to your DNS exactly as shown:
+**Step 1** — enter the mailbox name (`alerts`, `noreply`, `fleet` — anything) and the domain you
+want to send from (`yourcompany.com`). Press *Set sending domain*.
+
+**Step 2 — prove the domain is yours.** We show a single `TXT` record on
+`_orbetra-verify.yourcompany.com`. Publish it and press *Check verification*.
+
+Nothing is created in your name until this record resolves. That is deliberate: it is what stops
+anyone else naming your domain here and sending mail as your company.
+
+**Step 3 — publish the DKIM keys.** Once ownership is proved we show **three CNAME records**. Add all
+three exactly as shown:
 
 | Field | Value |
 |---|---|
@@ -153,8 +162,9 @@ Settings → Branding → **Sending domain**.
 These are DKIM keys. They let mail servers confirm the message really came from your domain, which
 is what stops it landing in spam.
 
-**Step 3** — press Verify. This can take up to an hour after the records are published; it is the
-slowest step in this guide and there is nothing to do but wait.
+**Step 4** — press *Check verification* again. This can take up to an hour after the records are
+published; it is the slowest step in this guide and there is nothing to do but wait. Pressing it
+early is harmless — it just reports "waiting for DNS" again.
 
 Until it verifies, mail keeps going out from our address rather than failing — your customers never
 lose an alert because a DNS record is still propagating.
@@ -173,7 +183,8 @@ lose an alert because a DNS record is still propagating.
    it is the last thing to change. It should be your favicon (or your logo, if you left that empty).
 3. Use **Forgot password** with your own address. The mail should carry your logo and its link
    should point back at *your* domain — not ours. Pressing Reply should reach your support address.
-   (The "From" line still shows ours until Part 3 ships.)
+   Once Part 3 is verified, the "From" line is yours too; until then it is ours with Reply-To set
+   to you.
 4. Open the site on a phone. Add it to the home screen; the icon and name should be yours.
 
 If any of those still shows our name, tell us — it is a bug on our side, not a setting you missed.

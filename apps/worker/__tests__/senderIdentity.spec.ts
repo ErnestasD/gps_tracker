@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { senderWithName } from '../src/notify/emailTransport.js'
+import { safeSender, senderWithName } from '../src/notify/emailTransport.js'
 
 /**
  * The `From:` display name (audit W-3).
@@ -54,5 +54,58 @@ describe('senderWithName', () => {
 
   it('keeps non-ASCII intact for nodemailer to RFC 2047-encode', () => {
     expect(senderWithName('hello@orbetra.com', 'Vežėjai')).toBe('"Vežėjai" <hello@orbetra.com>')
+  })
+})
+
+/**
+ * The `From:` ADDRESS — the other half, and the half that needed DNS (ADR-036, audit W-3).
+ *
+ * `safeSender` is the send path's own check on a value that began as text a reseller typed into a
+ * settings form and ends up in a mail header. The zod schema constrains what may be STORED; this
+ * constrains what may be SENT, and they are different guarantees: a row written before the schema
+ * tightened, a hand-run SQL fix, or a future caller passing something else bypasses the first and
+ * none of them bypass this.
+ */
+describe('safeSender', () => {
+  it('accepts an ordinary tenant sending address', () => {
+    for (const a of ['alertai@klientas.lt', 'no-reply@fleet.klientas.co.uk', 'a.b+c@x.io', ' ALERTAI@Klientas.lt ']) {
+      expect(safeSender(a), a).toBe(a.trim())
+    }
+  })
+
+  it('★ refuses anything that could add a header line', () => {
+    // The classic injection: a newline in a From: value appends headers of the sender's choosing.
+    // Refused rather than stripped — an address we had to repair is an address we do not understand,
+    // and unlike a display name there is no "cleaned" version that is still the right mailbox.
+    for (const a of [
+      'a@x.lt\nBcc: victim@x.lt',
+      'a@x.lt\r\nContent-Type: text/html',
+      'Orbetra <hello@orbetra.com>',
+      'a b@x.lt',
+      '"weird name"@x.lt',
+      'a@x.lt, b@y.lt',
+    ]) {
+      expect(safeSender(a), JSON.stringify(a)).toBeUndefined()
+    }
+  })
+
+  it('refuses shapes that are not one address', () => {
+    for (const a of ['', '   ', 'no-at-sign', 'a@@x.lt', 'a@x', 'a@.lt', 'a@x..lt', '@x.lt', 'a@-x.lt', 'a@x-.lt', `${'a'.repeat(400)}@x.lt`]) {
+      expect(safeSender(a), a).toBeUndefined()
+    }
+  })
+
+  it('undefined in, undefined out — the common case is a tenant with no sending domain', () => {
+    expect(safeSender(undefined)).toBeUndefined()
+  })
+
+  it('★ composes with the display name, and a bad address never reaches the header', () => {
+    // the two halves meeting: the tenant's name over the tenant's own address…
+    expect(senderWithName(safeSender('alertai@klientas.lt') ?? 'hello@orbetra.com', 'Dokigo'))
+      .toBe('"Dokigo" <alertai@klientas.lt>')
+    // …and a malformed one falls back to the platform identity rather than failing the send. A
+    // message from the wrong name is a leak; a message that never arrives is an outage.
+    expect(senderWithName(safeSender('a@x.lt\nBcc: v@x.lt') ?? 'hello@orbetra.com', 'Dokigo'))
+      .toBe('"Dokigo" <hello@orbetra.com>')
   })
 })

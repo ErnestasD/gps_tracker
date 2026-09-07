@@ -71,6 +71,28 @@ export type SuppressionLookup = (addresses: readonly string[]) => Promise<Readon
  * library's internals is not a sanitiser. Then RFC 5322 quoting: inside a quoted-string everything
  * survives except `"` and `\`, which are escaped. Non-ASCII is left for nodemailer to RFC 2047-encode.
  */
+/**
+ * A tenant-supplied sending address, or undefined if it is not one (ADR-036).
+ *
+ * `senderWithName` puts its argument straight into a `From:` header, and with ADR-036 that argument
+ * can originate as text a reseller typed on a settings screen. The zod schema already constrains
+ * what may be STORED; this is the send-path check, and it exists separately because the two are
+ * different guarantees — a row written before a schema tightened, a hand-run SQL fix, or a future
+ * caller passing something else all bypass the first and none bypass this.
+ *
+ * Deliberately stricter than RFC 5321: exactly one `@`, a dot-atom local part, a hostname domain, no
+ * whitespace or control characters anywhere. A legal quoted-string address like `"a b"@x.lt` is
+ * refused, because it is indistinguishable from an injection attempt at this layer and no alert
+ * sender has ever needed one.
+ */
+export function safeSender(address?: string): string | undefined {
+  const a = (address ?? '').trim()
+  if (a === '' || a.length > 320) return undefined
+  return /^[a-z0-9!#$%&'*+/=?^_`{|}~-]+(\.[a-z0-9!#$%&'*+/=?^_`{|}~-]+)*@(?!-)[a-z0-9-]{1,63}(?<!-)(\.(?!-)[a-z0-9-]{1,63}(?<!-))+$/i.test(a)
+    ? a
+    : undefined
+}
+
 export function senderWithName(configured: string, name?: string): string {
   // Bound the length too: `productName` is capped at 60 by brandingSchema, but this function is the
   // last thing between arbitrary text and a header line, and it should hold on its own.
@@ -150,7 +172,7 @@ export function buildEmailTransport(
     return undefined
   }
   return {
-    send: async ({ to, subject, text, html, replyTo, fromName }) => {
+    send: async ({ to, subject, text, html, replyTo, fromName, fromAddress }) => {
       // A MISSING RECIPIENT IS A NO-OP, NOT A CRASH. `to` is typed `string`, and a job whose payload
       // lost its `email` field made this throw `Cannot read properties of undefined (reading
       // 'split')` — which BullMQ retried five times and then dead-lettered. That is the worst
@@ -174,7 +196,12 @@ export function buildEmailTransport(
         return
       }
       await mailer.sendMail({
-        from: senderWithName(from, fromName),
+        // A tenant's verified sending address when they have one, ours otherwise (ADR-036). The
+        // address is re-validated HERE rather than trusted from the caller: it reaches a mail header,
+        // it originated as text a reseller typed, and this function is the last thing between the
+        // two. A malformed one falls back to the platform identity — a message from the wrong name
+        // is a leak, a message that never sends is an outage.
+        from: senderWithName(safeSender(fromAddress) ?? from, fromName),
         // The tenant's own support address, so hitting Reply reaches THEM. Their address was
         // already printed in the footer of every message while the reply went to us — which is
         // both a brand leak and a customer trying to get help from the wrong company.

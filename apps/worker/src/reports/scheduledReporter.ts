@@ -1,6 +1,7 @@
 import { runReport, type Db, type Pool, type ReportResult, type ReportType } from '@orbetra/db'
 import { absolutizeBrandAssets, brandingReadSchema, emailHeading, escapeHtml, hasBrandAsset, whiteLabelFromPlan, METRIC_UNITS, renderBrandedEmail, sanitizeUnits, type Branding, type DisplayUnits } from '@orbetra/shared'
 
+import { sendingAddress } from '../notify/senderAddress.js'
 import { brandAssetOrigin } from '../notify/tenantOrigin.js'
 
 import { renderReportTable, renderReportTableHtml, reportTitle } from '../format/report.js'
@@ -224,11 +225,15 @@ export async function runDueSchedules(deps: ScheduledReporterDeps): Promise<{ du
       const window = reportWindow(s, nowMs, s.lastRunAt ? s.lastRunAt.getTime() : null)
       const result = await runReport(deps.pool, s.reportType as ReportType, { tenantId: s.tenantId, accountId: s.accountId }, { ...window, timezone: s.timezone })
       const { brand, branding, tenantName, locale, units, whiteLabel } = await resolveRecipient(deps.pool, s.tenantId, s.accountId, deps.platformDomain)
+      // The tenant's own sending address once they have proved a domain (ADR-036, audit W-3). Read
+      // ONCE per schedule, not per recipient: the answer is the same for all of them, and a report
+      // to twenty addresses should not be twenty identical lookups.
+      const from = whiteLabel ? (await sendingAddress(deps.pool, s.tenantId)) ?? undefined : undefined
       const { subject, text, html } = formatReport(result, window, { timezone: s.timezone, brand, branding, tenantName, locale, units, whiteLabel })
       // each recipient independently: one bad address must NOT suppress the others
       for (const to of s.recipients) {
         try {
-          await deps.transport.send({ to, subject, text, html, replyTo: branding?.supportEmail, ...(whiteLabel && brand !== '' ? { fromName: brand } : {}) })
+          await deps.transport.send({ to, subject, text, html, replyTo: branding?.supportEmail, ...(whiteLabel && brand !== '' ? { fromName: brand } : {}), ...(from !== undefined ? { fromAddress: from } : {}) })
           emailed++
         } catch (err) {
           console.error('scheduled report send failed', s.id, err instanceof Error ? err.message : String(err)) // message only, no PII object

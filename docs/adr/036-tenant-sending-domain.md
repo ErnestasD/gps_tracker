@@ -1,8 +1,33 @@
 # ADR-036 — A white-label tenant sends mail from their OWN domain
 
-Status: **proposed** (2026-08-07) — decided, NOT yet implemented. No `sesv2` code exists; mail is
-still sent from the platform identity with `Reply-To` set to the tenant's support address.
-Supersedes nothing. Related: E03-5 (custom domains), ADR-023 (SMTP transport), ROADMAP-post-v1 item 13.
+Status: **accepted** (2026-08-07) — **implemented 2026-09-07**. `tenant_sending_domains` holds one
+identity per tenant, four routes on the branding screen create and verify it, and the three
+tenant-facing send paths (alerts, scheduled reports, auth mail) carry the address.
+
+**One thing this ADR did not say, and the implementation needs.** The decision below is "verify the
+tenant's domain as a sending identity in OUR SES account", which is right — but SES verifies a
+DOMAIN and never reports who asked for it. A first cut trusted it alone and the hole was two calls
+wide: name a domain another tenant had verified, let `CreateEmailIdentity` return AlreadyExists, read
+back the identity SES already holds, and send DKIM-signed DMARC-aligned mail as their company to any
+address. So the shipped flow proves ownership FIRST, with the same `_orbetra-verify` TXT the app
+domains use, and only then asks SES; a partial unique index over verified rows is the second lock.
+Our own platform domain is refused outright, because `MAIL_FROM` is an identity in this same account.
+Caught by an adversarial review before merge. Supersedes nothing. Related: E03-5 (custom domains), ADR-023 (SMTP transport),
+ROADMAP-post-v1 item 13, audit W-3.
+
+**It ships INERT.** The IAM user this needs does not exist yet, so `sesIdentityConfigFromEnv()`
+answers null on every current deployment: the routes 503 and the settings card says the feature is
+unavailable. Nothing about any tenant's existing mail changes until `AWS_REGION`,
+`SES_ADMIN_ACCESS_KEY_ID` and `SES_ADMIN_SECRET_ACCESS_KEY` are set — see the README env table. That
+was a design goal rather than a compromise: the SMS gateway shipped the same way (ADR-032), and the
+alternative is a feature nobody can review until a credential arrives.
+
+**One thing deliberately NOT built.** Per-tenant SMTP credentials, which this ADR rejects below. The
+founder later answered "both, DKIM default" when the white-label plan options were put to them; that
+answer predates re-reading the reasoning here — support blindness when the tenant's own provider
+throttles, and holding a live third-party credential for as long as the customer exists. DKIM is the
+default under either answer, so nothing shipped depends on resolving it, but BYO SMTP should not be
+built on the strength of a multiple-choice answer without that trade-off in view. Ask first.
 
 ## The problem
 
@@ -54,9 +79,11 @@ The same shape as the custom-domain flow they have already been through, deliber
 records, click Verify.
 
 1. Settings → Branding → **Sending domain**: type `klientas.lt`, choose the address (`alertai@`).
-2. We create the SES identity and show **three CNAME records** (DKIM) plus one optional MAIL FROM
-   record. They publish them.
-3. Click Verify. SES reports `SUCCESS` and we store the address.
+2. We show **one TXT record** proving the domain is theirs. Nothing is created in our account until
+   it resolves — that is what stops anyone else naming their domain here.
+3. Click Verify. Ownership holds, so we create the SES identity and show **three CNAME records**
+   (DKIM). They publish those too.
+4. Click Verify again. SES reports `SUCCESS` and we store the address.
 4. Every message for that tenant now goes out as `Fleet Klientas <alertai@klientas.lt>`.
 
 Until step 3 completes, mail keeps going out on the platform identity — an unverified domain must

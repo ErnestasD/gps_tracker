@@ -24,6 +24,9 @@ export interface NotifyMessage {
   /** display name for `From:` on a white-label tenant's mail — the inbox row is read before the
    *  message is opened, so this is the most visible identity we control (audit W-3) */
   fromName?: string | undefined
+  /** sending ADDRESS for `From:` — set only when the tenant has a DKIM identity SES verified
+   *  (ADR-036). Absent ⇒ the platform's MAIL_FROM, which is a correct fallback, not a degraded one. */
+  fromAddress?: string | undefined
 }
 
 /** Per-message context resolved by the worker from the device/account/tenant registry. */
@@ -46,6 +49,10 @@ export interface NotifyContext {
   branding?: Branding | undefined
   /** tenant name — the fallback product name for renderBrandedEmail when branding has no productName. */
   tenantName?: string | undefined
+  /** the tenant's own verified sending address (ADR-036), or absent to send on the platform's.
+   *  Resolved at send time rather than carried in the job, so a domain verified after a job was
+   *  enqueued is still honoured. */
+  sendingAddress?: string | undefined
 }
 
 /** Readable fallback for an unknown kind: 'some_kind' → 'Some kind' (never leak a raw slug).
@@ -76,7 +83,17 @@ export function notificationMessage(kind: string, deviceId: string, payload: Rec
   // Same tri-state resolution as the auth path: an unreadable plan falls back to "has any branding",
   // because leaving the sender name to MAIL_FROM would put OUR name on a reseller's alert.
   const isWhiteLabel = ctx.whiteLabel ?? (ctx.branding !== undefined && Object.keys(ctx.branding).length > 0)
-  return { subject, text, html, replyTo: ctx.branding?.supportEmail, ...(isWhiteLabel && brand !== undefined ? { fromName: brand } : {}) }
+  return {
+    subject,
+    text,
+    html,
+    replyTo: ctx.branding?.supportEmail,
+    ...(isWhiteLabel && brand !== undefined ? { fromName: brand } : {}),
+    // The address follows the same white-label gate as the name. A DIRECT customer bought our
+    // product and our identity is the right one for them; only a reseller's mail should ever leave
+    // as somebody else's domain, even if a stray row said otherwise.
+    ...(isWhiteLabel && ctx.sendingAddress !== undefined ? { fromAddress: ctx.sendingAddress } : {}),
+  }
 }
 
 /**

@@ -736,6 +736,65 @@ export const domainCreateSchema = z.object({
     .regex(/^(?!-)[a-z0-9-]{1,63}(?<!-)(\.(?!-)[a-z0-9-]{1,63}(?<!-))+$/, 'must be a bare hostname'),
 })
 
+/**
+ * The address a white-label tenant's mail goes out AS (ADR-036, audit W-3).
+ *
+ * Two fields because the DNS proof and the visible address are separate things: DKIM is published on
+ * the registrable DOMAIN, while what a recipient reads is `<mailbox>@<domain>`. Asking for one
+ * combined address string would mean parsing it back apart to know which zone to check.
+ *
+ * The mailbox is deliberately narrower than RFC 5321 allows. A local part may legally contain
+ * quotes, spaces and `@` inside a quoted string; every one of those is a header-injection shape
+ * heading for a `From:` line, and no reseller has ever wanted `"weird name"@klientas.lt` as their
+ * alert sender. Dot-atom without a leading, trailing or doubled dot is the whole useful range.
+ */
+export const sendingDomainCreateSchema = z.object({
+  // trimmed and lowercased BEFORE the shape check: DNS and mailbox names are case-insensitive, and
+  // refusing `Klientas.lt` with a bare 400 — while the route two lines later lowercases anyway — is a
+  // rule that exists only for API clients, since the web form happens to lowercase before it submits
+  domain: z
+    .string()
+    .transform((v) => v.trim().toLowerCase())
+    .pipe(z.string().min(3).max(253).regex(/^(?!-)[a-z0-9-]{1,63}(?<!-)(\.(?!-)[a-z0-9-]{1,63}(?<!-))+$/, 'must be a bare hostname')),
+  mailbox: z
+    .string()
+    .transform((v) => v.trim().toLowerCase())
+    // RFC 5321 §4.5.3.1.1 caps the local part at 64 octets
+    .pipe(z.string().min(1).max(64).regex(/^[a-z0-9!#$%&'*+/=?^_`{|}~-]+(\.[a-z0-9!#$%&'*+/=?^_`{|}~-]+)*$/, 'must be a plain mailbox name')),
+})
+
+const dnsRecordSchema = z.object({ name: z.string(), value: z.string() })
+
+/** What the settings screen reads back. `address` is derived, never stored twice. */
+export const sendingDomainReadSchema = z.object({
+  domain: z.string(),
+  mailbox: z.string(),
+  address: z.string(),
+  status: z.enum(['pending', 'verified', 'failed']),
+  /** the TXT proving THIS tenant controls the zone — published before SES is ever asked, because
+   *  SES's answer is about the domain and would be identical for an impostor */
+  ownershipRecord: dnsRecordSchema,
+  /** the three DKIM CNAMEs; EMPTY until ownership is proved, since SES has not been called yet */
+  dkimRecords: z.array(dnsRecordSchema),
+  verifiedAt: z.string().nullable(),
+})
+
+export type SendingDomainRead = z.infer<typeof sendingDomainReadSchema>
+
+/**
+ * The GET payload: the identity, plus whether this deployment can manage identities at all.
+ *
+ * `configured` rides along so the settings card can say the feature is unavailable BEFORE asking a
+ * reseller to fill in a domain — the same reason the onboarding sheet carries `smsEnabled`. Learning
+ * it from a 503 on submit means the form was a waste of their time.
+ */
+export const sendingDomainStateSchema = z.object({
+  configured: z.boolean(),
+  identity: sendingDomainReadSchema.nullable(),
+})
+
+export type SendingDomainState = z.infer<typeof sendingDomainStateSchema>
+
 // ── quarantine claim (platform) ──────────────────────────────────────────────
 export const quarantineClaimSchema = z.object({
   tenantId: z.string().uuid(),

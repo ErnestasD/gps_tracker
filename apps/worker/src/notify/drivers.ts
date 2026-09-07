@@ -64,10 +64,19 @@ export interface OutgoingEmail {
    * Display name for `From:` — the reseller's product name on white-label mail.
    *
    * This is the line an inbox shows BEFORE the message is opened, so it is the most visible piece
-   * of identity we control. The address beside it stays ours until ADR-036 lands; a display name is
-   * legitimate on a shared sending domain and needs no DNS from the tenant.
+   * of identity we control. A display name is legitimate on a shared sending domain and needs no
+   * DNS from the tenant, which is why it shipped first and alone.
    */
   fromName?: string | undefined
+  /**
+   * Sending ADDRESS for `From:` — the other half, and the one that needed DNS (ADR-036, audit W-3).
+   *
+   * Set only when the tenant has a DKIM identity SES has actually verified. Absent ⇒ the platform's
+   * `MAIL_FROM`, which is the correct fallback and not a degraded one: sending as a domain that has
+   * not authorised us fails DMARC and puts a customer's alerts in spam, which is a worse outcome
+   * than the leak. An unverified sending domain must never stop mail going out.
+   */
+  fromAddress?: string | undefined
 }
 
 /** Injected email transport — the real one (nodemailer/SES) lands with SES creds (ADR-023). */
@@ -87,6 +96,7 @@ export function emailDriver(transport: EmailTransport): Driver {
         html: msg.html,
         replyTo: msg.replyTo,
         fromName: msg.fromName,
+        fromAddress: msg.fromAddress,
       })
     },
   }

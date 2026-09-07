@@ -14,6 +14,7 @@ import { createApiProm, createApp } from './app.js'
 import { DEFAULT_DEVICE_CREATE_LIMIT, DEFAULT_SMS_QUOTA } from './routes/crud.js'
 import { rehydrateRegistries } from './rehydrate.js'
 import { createStripeGateway, stripeConfigFromEnv } from './billing/stripe.js'
+import { createSesIdentityGateway, sesIdentityConfigFromEnv } from './email/sesIdentities.js'
 import { attachWsGateway } from './ws.js'
 
 // Env contract per PROJECT_PLAN §6.7 (E03-1: real auth — the E02-4 stub is gone).
@@ -147,6 +148,14 @@ if (sms === undefined) console.warn('SMS gateway not configured (TWILIO_ACCOUNT_
 const stripeConfig = stripeConfigFromEnv()
 const stripe = stripeConfig !== null ? createStripeGateway(stripeConfig) : undefined
 if (stripe === undefined) console.warn('Stripe not configured (STRIPE_SECRET_KEY/WEBHOOK_SECRET/PRICE_ID) — billing routes disabled')
+// Tenant sending identities (ADR-036). Needs an IAM user that can manage SES identities — the SMTP
+// credentials this server already holds can SEND but cannot create one. Absent ⇒ the four
+// /v1/tenant/sending-domain routes answer 503 and the branding screen reports the feature as
+// unavailable, which is a supported shape and not a fault: every reseller's mail keeps going out on
+// the platform identity, exactly as it did before ADR-036.
+const sesConfig = sesIdentityConfigFromEnv()
+const ses = sesConfig !== null ? createSesIdentityGateway(sesConfig) : undefined
+if (ses === undefined) console.warn('SES identity management not configured (AWS_REGION/SES_ADMIN_ACCESS_KEY_ID/SES_ADMIN_SECRET_ACCESS_KEY) — tenant sending domains disabled')
 // LOUD, because this one turns a LIVE feature off rather than leaving an unstarted one off. The SES
 // feedback subscription is confirmed and delivering in production (a simulator bounce landed in
 // email_suppressions on 2026-08-10), and the endpoint refuses everything without this variable — so
@@ -194,6 +203,7 @@ const deps = {
   // sheet renders as a visible gap rather than as somebody else's brand.
   onboarding: { host: process.env['INGEST_PUBLIC_HOST'] ?? '', port: Number(process.env['INGEST_TCP_PORT'] ?? 5027) },
   ...(stripe !== undefined ? { stripe } : {}),
+  ...(ses !== undefined ? { ses } : {}),
   // The SNS topic our SES feedback must come from. NOT optional-by-omission: the endpoint is public
   // and an AWS signature only proves AWS signed it, so an unset value makes /v1/webhooks/ses refuse
   // everything rather than accept a bounce published from a stranger's topic.

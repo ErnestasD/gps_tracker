@@ -9,7 +9,7 @@ export const emailsToYourCustomers: KbArticle = {
   doc: {
     en: {
       title: 'The e-mail your customers receive',
-      summary: 'Exactly which parts of a message carry your brand today, which part does not yet, and how to keep messages arriving.',
+      summary: 'Which parts of a message carry your brand, how to make the sending address yours too, and how to keep messages arriving.',
       keywords: ['email', 'sender', 'from', 'reply-to', 'branding', 'deliverability', 'spf', 'dkim', 'spam'],
       blocks: [
         { p: 'Your customers get mail from this platform: account activations, password resets, alerts and scheduled reports. This is what those messages look like from their side.' },
@@ -20,8 +20,10 @@ export const emailsToYourCustomers: KbArticle = {
           '**The body** — your logo, your colours, your product name in the text.',
           '**Every link** — an address on your domain, so a click never leaves your brand.',
         ] },
-        { h2: 'What does not carry it yet', id: 'not-yet' },
-        { callout: 'note', p: 'The underlying sending **address** is the platform\'s shared one, not an address at your domain. The display name in front of it is yours, so an inbox shows your name — but a recipient who expands the header sees the technical address behind it. Sending from your own domain requires DNS records on your side and is planned; the display name and reply address already work today.' },
+        { h2: 'The sending address', id: 'not-yet' },
+        { p: 'Until you set this up, the underlying sending **address** is a shared one rather than an address at your domain. The display name in front of it is already yours, so an inbox shows your name — but a recipient who expands the header sees the technical address behind it.' },
+        { p: 'To make that line yours as well, open **Branding → Send mail from your own address**, enter the mailbox and domain you want to send from, and publish the three DNS records shown. Verification can take up to an hour after they appear.' },
+        { callout: 'note', p: 'Nothing stops while you wait. Until the records verify, messages keep going out on the shared address exactly as before — a half-finished setup never costs a customer an alert. If the panel says the feature is not available on this installation, it has not been switched on yet; nothing is wrong on your side.' },
         { p: 'If that matters for a particular customer, the practical answer is to make sure your support address is set, so that every reply and every follow-up conversation happens with you.' },
         { h2: 'Keeping mail arriving', id: 'deliverability' },
         { ul: [
@@ -37,7 +39,7 @@ export const emailsToYourCustomers: KbArticle = {
     },
     lt: {
       title: 'Laiškai, kuriuos gauna jūsų klientai',
-      summary: 'Kurios žinutės dalys šiandien jau su jūsų prekės ženklu, kuri dar ne ir kaip pasirūpinti, kad laiškai pasiektų gavėjus.',
+      summary: 'Kurios žinutės dalys su jūsų prekės ženklu, kaip ir siuntimo adresą padaryti savą ir kaip pasirūpinti, kad laiškai pasiektų gavėjus.',
       keywords: ['el. paštas', 'siuntėjas', 'from', 'reply-to', 'prekės ženklas', 'pristatymas', 'spf', 'dkim', 'šlamštas'],
       blocks: [
         { p: 'Jūsų klientai gauna laiškus iš šios platformos: paskyros aktyvavimus, slaptažodžio atstatymus, pranešimus ir suplanuotas ataskaitas. Štai kaip tos žinutės atrodo iš jų pusės.' },
@@ -48,8 +50,10 @@ export const emailsToYourCustomers: KbArticle = {
           '**Turinys** – jūsų logotipas, spalvos, jūsų produkto pavadinimas tekste.',
           '**Kiekviena nuoroda** – vedanti į jūsų domeną, tad paspaudęs nuorodą klientas niekada neišeina iš jūsų aplinkos.',
         ] },
-        { h2: 'Kur dar ne', id: 'not-yet' },
-        { callout: 'note', p: 'Pats siuntimo **adresas** yra bendras platformos adresas, o ne adresas jūsų domene. Prieš jį rodomas vardas yra jūsų, tad pašto dėžutė rodo jūsų pavadinimą – bet gavėjas, išskleidęs antraštę, mato techninį adresą už jo. Siuntimui iš savo domeno reikia DNS įrašų jūsų pusėje – tai jau planuojama; rodomas vardas ir atsakymo adresas veikia jau šiandien.' },
+        { h2: 'Siuntimo adresas', id: 'not-yet' },
+        { p: 'Kol to nesusitvarkėte, pats siuntimo **adresas** yra bendras, o ne adresas jūsų domene. Prieš jį rodomas vardas jau yra jūsų, tad pašto dėžutė rodo jūsų pavadinimą – bet gavėjas, išskleidęs antraštę, mato techninį adresą už jo.' },
+        { p: 'Kad ir ta eilutė taptų jūsų, atverkite **Prekės ženklas → Siųskite laiškus savo adresu**, įveskite dėžutės vardą ir domeną, iš kurio norite siųsti, ir paskelbkite tris parodytus DNS įrašus. Patvirtinimas po jų paskelbimo gali užtrukti iki valandos.' },
+        { callout: 'note', p: 'Kol laukiate, niekas nesustoja. Kol įrašai nepatvirtinti, žinutės toliau siunčiamos bendru adresu lygiai kaip anksčiau – nebaigtas nustatymas niekada nekainuoja klientui prarasto pranešimo. Jei skydelis sako, kad funkcija šioje sistemoje neprieinama, ji tiesiog dar neįjungta; jūsų pusėje nieko blogo nėra.' },
         { p: 'Jei konkrečiam klientui tai svarbu, praktiškas sprendimas – įsitikinti, kad nustatytas jūsų pagalbos adresas – tada kiekvienas atsakymas ir tolesnis pokalbis vyks su jumis.' },
         { h2: 'Kad laiškai pasiektų', id: 'deliverability' },
         { ul: [
@@ -65,7 +69,7 @@ export const emailsToYourCustomers: KbArticle = {
     },
     pl: {
       title: 'E-maile, które dostają Twoi klienci',
-      summary: 'Dokładnie które części wiadomości mają dziś Twoją markę, która jeszcze nie, i jak zadbać, by wiadomości docierały.',
+      summary: 'Które części wiadomości mają Twoją markę, jak sprawić, by adres wysyłki też był Twój, i jak zadbać, by wiadomości docierały.',
       keywords: ['e-mail', 'nadawca', 'from', 'reply-to', 'marka', 'dostarczalność', 'spf', 'dkim', 'spam'],
       blocks: [
         { p: 'Twoi klienci dostają pocztę z tej platformy: aktywacje kont, resety haseł, alerty i raporty cykliczne. Tak wyglądają te wiadomości z ich strony.' },
@@ -76,8 +80,10 @@ export const emailsToYourCustomers: KbArticle = {
           '**Treść** — Twoje logo, Twoje kolory, nazwa Twojego produktu w tekście.',
           '**Każdy link** — wskazujący na Twoją domenę, więc kliknięcie nigdy nie opuszcza Twojej marki.',
         ] },
-        { h2: 'Czego jeszcze nie ma', id: 'not-yet' },
-        { callout: 'note', p: 'Sam **adres** wysyłki jest wspólnym adresem platformy, a nie adresem w Twojej domenie. Nazwa wyświetlana przed nim jest Twoja, więc skrzynka pokazuje Twoją nazwę — ale odbiorca, który rozwinie nagłówek, zobaczy stojący za nią adres techniczny. Wysyłka z własnej domeny wymaga rekordów DNS po Twojej stronie i jest planowana; nazwa wyświetlana i adres odpowiedzi działają już dziś.' },
+        { h2: 'Adres wysyłki', id: 'not-yet' },
+        { p: 'Dopóki tego nie skonfigurujesz, sam **adres** wysyłki jest wspólny, a nie w Twojej domenie. Nazwa wyświetlana przed nim jest już Twoja, więc skrzynka pokazuje Twoją nazwę — ale odbiorca, który rozwinie nagłówek, zobaczy stojący za nią adres techniczny.' },
+        { p: 'Aby i ta linia była Twoja, otwórz **Marka → Wysyłaj wiadomości z własnego adresu**, podaj nazwę skrzynki i domenę, z której chcesz wysyłać, i opublikuj trzy pokazane rekordy DNS. Weryfikacja może potrwać do godziny po ich pojawieniu się.' },
+        { callout: 'note', p: 'Nic się nie zatrzymuje, gdy czekasz. Do czasu weryfikacji wiadomości nadal wychodzą ze wspólnego adresu dokładnie jak wcześniej — niedokończona konfiguracja nigdy nie kosztuje klienta alertu. Jeśli panel mówi, że funkcja jest niedostępna w tej instalacji, po prostu nie została jeszcze włączona; po Twojej stronie nic nie jest nie tak.' },
         { p: 'Jeśli dla konkretnego klienta to istotne, praktycznym rozwiązaniem jest upewnienie się, że Twój adres wsparcia jest ustawiony — wtedy każda odpowiedź i każda dalsza rozmowa toczy się z Tobą.' },
         { h2: 'Żeby poczta docierała', id: 'deliverability' },
         { ul: [
@@ -93,7 +99,7 @@ export const emailsToYourCustomers: KbArticle = {
     },
     de: {
       title: 'E-Mails, die Ihre Kunden erhalten',
-      summary: 'Genau welche Teile einer Nachricht heute Ihre Marke tragen, welcher noch nicht, und wie Sie dafür sorgen, dass Post ankommt.',
+      summary: 'Welche Teile einer Nachricht Ihre Marke tragen, wie auch die Absenderadresse Ihre wird, und wie Sie dafür sorgen, dass Post ankommt.',
       keywords: ['e-mail', 'absender', 'from', 'reply-to', 'branding', 'zustellbarkeit', 'spf', 'dkim', 'spam'],
       blocks: [
         { p: 'Ihre Kunden erhalten Post von dieser Plattform: Kontoaktivierungen, Passwort-Resets, Alarme und geplante Berichte. So sehen diese Nachrichten von ihrer Seite aus.' },
@@ -104,8 +110,10 @@ export const emailsToYourCustomers: KbArticle = {
           '**Der Inhalt** — Ihr Logo, Ihre Farben, Ihr Produktname im Text.',
           '**Jeder Link** — auf Ihre Domain, sodass ein Klick nie Ihre Marke verlässt.',
         ] },
-        { h2: 'Was noch nicht', id: 'not-yet' },
-        { callout: 'note', p: 'Die eigentliche Versand**adresse** ist die gemeinsame der Plattform, keine Adresse Ihrer Domain. Der Anzeigename davor ist Ihrer, ein Posteingang zeigt also Ihren Namen — wer den Header aufklappt, sieht jedoch die technische Adresse dahinter. Versand von Ihrer eigenen Domain braucht DNS-Einträge auf Ihrer Seite und ist geplant; Anzeigename und Antwortadresse funktionieren bereits heute.' },
+        { h2: 'Die Absenderadresse', id: 'not-yet' },
+        { p: 'Solange Sie das nicht eingerichtet haben, ist die eigentliche Versand**adresse** eine gemeinsame und keine Adresse Ihrer Domain. Der Anzeigename davor ist bereits Ihrer, ein Posteingang zeigt also Ihren Namen — wer den Header aufklappt, sieht jedoch die technische Adresse dahinter.' },
+        { p: 'Damit auch diese Zeile Ihre wird, öffnen Sie **Marke → E-Mails von Ihrer eigenen Adresse senden**, tragen Postfachnamen und Domain ein, von der Sie senden möchten, und veröffentlichen Sie die drei angezeigten DNS-Einträge. Die Bestätigung kann danach bis zu einer Stunde dauern.' },
+        { callout: 'note', p: 'Währenddessen bleibt nichts liegen. Bis zur Bestätigung gehen Nachrichten weiter über die gemeinsame Adresse raus, genau wie zuvor — eine halbfertige Einrichtung kostet einen Kunden nie eine Benachrichtigung. Sagt das Panel, die Funktion sei in dieser Installation nicht verfügbar, ist sie schlicht noch nicht eingeschaltet; auf Ihrer Seite ist nichts falsch.' },
         { p: 'Zählt das bei einem bestimmten Kunden, ist die praktische Abhilfe, Ihre Support-Adresse zu setzen — dann laufen jede Antwort und jedes Folgegespräch über Sie.' },
         { h2: 'Damit Post ankommt', id: 'deliverability' },
         { ul: [

@@ -6,6 +6,7 @@ import { absolutizeBrandAssets, brandingReadSchema, hasBrandAsset, whiteLabelFro
 
 import { dispatchEvent } from '../notify/dispatch.js'
 import type { Drivers } from '../notify/drivers.js'
+import { sendingAddress } from '../notify/senderAddress.js'
 import { brandAssetOrigin } from '../notify/tenantOrigin.js'
 import { notificationMessage, type NotifyContext } from '../notify/message.js'
 import { NOTIFY_QUEUE, type NotifyJob } from './notifyQueue.js'
@@ -100,6 +101,9 @@ export async function resolveNotifyContext(pool: Pool, deviceId: string, platfor
       // the PLAN decides whose identity the mail wears, not whether the form is filled (audit W-4)
       whiteLabel: whiteLabelFromPlan(row.plan),
       tenantName: row.tenant_name ?? undefined,
+      // …and WHICH ADDRESS it leaves from, once the tenant has proved a domain (ADR-036, audit W-3).
+      // Null when they have not, which sends on the platform identity — see senderAddress.ts.
+      sendingAddress: (await sendingAddress(pool, row.tenant_id)) ?? undefined,
     }
   } catch (err) {
     // The alert still goes out — a context lookup must never suppress one — but it goes out NAKED:

@@ -26,6 +26,7 @@ import { createRuleRepo, type RuleRepo } from './repos/rules.js'
 import { createShareLinkRepo, type ShareLinkRepo } from './repos/shareLinks.js'
 import { createSmsDeliveryRepo, type SmsDeliveryRepo } from './repos/smsDeliveries.js'
 import { createTenantAssetRepo, type TenantAssetRepo } from './repos/tenantAssets.js'
+import { createTenantSendingDomainRepo, type TenantSendingDomainRepo } from './repos/tenantSendingDomains.js'
 import { createTenantDomainRepo, type TenantDomainRepo } from './repos/tenantDomains.js'
 import { createAffiliateRepo, type AffiliateRepo } from './repos/affiliates.js'
 import { createSuppressionRepo, type SuppressionRepo } from './repos/suppressions.js'
@@ -53,6 +54,7 @@ export interface Db {
   suppressions: SuppressionRepo
   tenantDomains: TenantDomainRepo
   tenantAssets: TenantAssetRepo
+  tenantSendingDomains: TenantSendingDomainRepo
   accounts: AccountRepo
   users: UserRepo
   devices: DeviceRepo
@@ -97,6 +99,7 @@ export function createDb(databaseUrl: string): Db {
     suppressions: createSuppressionRepo(prisma),
     tenantDomains: createTenantDomainRepo(prisma, audit),
     tenantAssets: createTenantAssetRepo(prisma, audit),
+    tenantSendingDomains: createTenantSendingDomainRepo(prisma, audit),
     accounts: createAccountRepo(prisma, audit),
     users: createUserRepo(prisma, audit),
     devices: createDeviceRepo(prisma, audit, shareLinksRepo),

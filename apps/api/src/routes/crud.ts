@@ -5,7 +5,7 @@ import type { Redis } from 'ioredis'
 import { z } from 'zod'
 
 import { loadDictionary, parseMultiplier } from '@orbetra/codec'
-import { AccountHasUsersError, AffiliateConflictError, clampTripsTake, DealDomainTakenError, TenantHasCommissionsError, DomainConflictError, DomainDuplicateError, DomainLimitError, DriverIbuttonConflictError, DriverNotInScopeError, DuplicateImeiError, GeofenceInvalidError, GeofenceTooLargeError, GeofenceTooComplexError, GeofenceLimitError, MAX_DOMAINS_PER_TENANT, readCanLatest, readFuelSeries, readHealthSeries, readOdometersKm, readLatestTelemetry, readPositions, toDeviceId, type Db, type Pool } from '@orbetra/db'
+import { AccountHasUsersError, AffiliateConflictError, clampTripsTake, DealDomainTakenError, TenantHasCommissionsError, DomainConflictError, DomainDuplicateError, DomainLimitError, DriverIbuttonConflictError, DriverNotInScopeError, DuplicateImeiError, GeofenceInvalidError, GeofenceTooLargeError, GeofenceTooComplexError, GeofenceLimitError, MAX_DOMAINS_PER_TENANT, readCanLatest, readFuelSeries, readHealthSeries, readOdometersKm, readLatestTelemetry, readPositions, toDeviceId, SendingDomainConflictError, type Db, type Pool, type TenantSendingDomain } from '@orbetra/db'
 import {
   ROLES,
   accountCreateSchema,
@@ -78,6 +78,10 @@ import {
   platformUserUpdateSchema,
   type TenantPlan,
   vsimStartSchema,
+  type SendingDomainRead,
+  dkimRecords,
+  sendingAddress,
+  sendingDomainCreateSchema,
 } from '@orbetra/shared'
 
 import { hasEntitlement } from '../auth/entitlements.js'
@@ -97,6 +101,7 @@ import { scopeOf, type RouteDef } from './registry.js'
 import { restoreTenantDevices } from '@orbetra/registry'
 
 import type { MintedToken } from '../lib/mapboxToken.js'
+import type { SesIdentityGateway } from '../email/sesIdentities.js'
 import { checkDomainDns, checkPlatformSubdomain, edgeAddresses, expectedTxt, isUnderPlatformDomain, newTxtToken, verifyDomainTxt, verifyHost, type NameResolver, type TxtResolver } from './tenantSelf.js'
 
 // Geofence Redis sync is BEST-EFFORT (E05-2 review MED-3): the DB row is the source of
@@ -169,6 +174,32 @@ return n`
  */
 export const DEFAULT_DEVICE_CREATE_LIMIT = { max: 10_000, windowS: 3600 }
 
+/**
+ * The sending identity as the settings screen reads it (ADR-036).
+ *
+ * `address` and `dkimRecords` are DERIVED here rather than stored, so the screen cannot show a
+ * mailbox and a domain that were joined differently from how the send path joins them, and cannot
+ * print a DKIM record whose name and target were assembled by a second piece of string handling.
+ * Both come from @orbetra/shared, which is also where the worker reads them.
+ *
+ * `dkimTokens` themselves are not returned. They are public DNS the moment they are published, so
+ * this is not secrecy — it is that a raw selector is not an instruction, and the reseller's job is
+ * to copy three records, not to work out what to do with three opaque strings.
+ */
+function sendingDomainView(row: TenantSendingDomain): SendingDomainRead {
+  return {
+    domain: row.domain,
+    mailbox: row.mailbox,
+    address: sendingAddress(row.domain, row.mailbox),
+    status: row.status === 'verified' || row.status === 'failed' ? row.status : 'pending',
+    // The ownership record comes FIRST and alone, because until it resolves there are no DKIM
+    // selectors to show — SES is not asked until this tenant has proved the zone is theirs.
+    ownershipRecord: { name: verifyHost(row.domain), value: row.txtToken },
+    dkimRecords: dkimRecords(row.domain, row.dkimTokens),
+    verifiedAt: row.verifiedAt === null ? null : row.verifiedAt.toISOString(),
+  }
+}
+
 export interface CrudDeps {
   db: Db
   /** self-hosted OSRM base URL (ADR-029) — powers virtual-device route generation (vsim);
@@ -198,6 +229,13 @@ export interface CrudDeps {
    * a self-hosted deploy without Prometheus is a supported shape, not a fault.
    */
   alertmanagerUrl?: string
+  /**
+   * SES identity management for tenant sending domains (ADR-036). Absent ⇒ the four
+   * `/v1/tenant/sending-domain` routes answer 503 and the settings screen reports the feature as
+   * unavailable, because the server's SES *SMTP* credentials can send but cannot create identities.
+   * Injectable so the routes are testable without reaching AWS.
+   */
+  ses?: SesIdentityGateway
   /** Device CRUD syncs the ingest/worker Redis registries (E03-3). */
   redis: Redis
   /** DNS TXT resolver for domain verification (E03-5); injectable for tests. */
@@ -262,6 +300,9 @@ const READ_POLICY: Record<string, Role[]> = {
   event: [...ROLES],
   branding: [...ROLES], // viewers see the theme
   domain: TENANT_ADMINS, // domains are admin config
+  // the SENDING domain names the reseller's own mail identity — same audience as `domain`, and a
+  // sentence about our relationship with them, which their customer's staff are not part of
+  sendingDomain: TENANT_ADMINS,
   audit: TENANT_ADMINS, // audit trail is tenant-wide + sensitive → admins only
   geofence: [...ROLES],
   driver: [...ROLES], // the driver roster is broadly readable
@@ -283,6 +324,7 @@ const WRITE_POLICY: Record<string, Role[]> = {
   // stays with tenant admins; see the route note.
   accountPrefs: ACCOUNT_WRITERS,
   user: TENANT_ADMINS,
+  sendingDomain: TENANT_ADMINS,
   device: ACCOUNT_WRITERS,
   rule: ACCOUNT_WRITERS,
   webhook: TENANT_ADMINS,
@@ -2637,6 +2679,156 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
           if (err instanceof DomainConflictError) return problem(c, 409, 'Conflict', 'domain already verified by another tenant')
           throw err
         }
+      } },
+
+    /**
+     * ── the tenant's own SENDING identity (ADR-036, audit W-3) ───────────────────────────────────
+     *
+     * The last line of a reseller's mail that was still ours. Everything inside the message is
+     * theirs — logo, colours, links, the display name — and the `From:` address said
+     * `hello@orbetra.com` on every activation, every password reset and every alert, because
+     * `MAIL_FROM` is one process-wide value that every tenant borrowed.
+     *
+     * ── TWO proofs, and SES supplies only one of them ────────────────────────────────────────────
+     * SES tells us a DOMAIN published our DKIM records. It never tells us WHO asked. A first cut of
+     * this feature trusted it alone, and the hole was two calls wide: name a domain another tenant
+     * had already verified, let `CreateEmailIdentity` come back AlreadyExists, read the identity SES
+     * already holds, and start sending DKIM-signed DMARC-aligned mail as their company — to any
+     * address, since rule channels and report recipients are free text. So ownership is proved the
+     * way it already is for app domains: a CSPRNG token at `_orbetra-verify.<domain>`, published by
+     * whoever controls the zone. Verify checks OURS first and only then asks SES.
+     *
+     * ── Never our own zone ───────────────────────────────────────────────────────────────────────
+     * `MAIL_FROM` is a verified identity in this same account, so without the platform-domain refusal
+     * a reseller could claim it and send as `security@<our domain>`.
+     *
+     * ALL FOUR answer 503 when the deployment holds no identity-management credentials — including
+     * DELETE, which would otherwise let a tenant destroy a working identity it could not recreate.
+     * The server has SES *SMTP* credentials, which can send but cannot create identities, so this
+     * stays inert — not broken — until the founder provisions the IAM user. The GET reports
+     * `configured` so the screen says so BEFORE the reseller fills in a form, the way the SMS
+     * gateway reports `smsEnabled`.
+     */
+    { method: 'get', path: '/v1/tenant/sending-domain', scopeClass: 'tenant', entity: 'sendingDomain', shape: 'collection', entitlement: 'customDomains',
+      handler: async (c) => {
+        if (!tenantWide(c)) return problem(c, 403, 'Forbidden', 'the sending domain is tenant-wide')
+        const row = await db.tenantSendingDomains.get(scopeOf(auth(c)))
+        // 200 with a null identity rather than 404: "this tenant has not set one" is the ordinary
+        // state, and a settings screen that treats its own empty case as an error renders a red box
+        // on first visit. `configured` rides along so the card can say the feature is unavailable
+        // before asking for anything.
+        return json(c, { configured: deps.ses !== undefined, identity: row === null ? null : sendingDomainView(row) })
+      } },
+    { method: 'post', path: '/v1/tenant/sending-domain', scopeClass: 'tenant', entity: 'sendingDomain', shape: 'collection', entitlement: 'customDomains',
+      handler: async (c) => {
+        if (!tenantWide(c)) return problem(c, 403, 'Forbidden', 'the sending domain is tenant-wide')
+        if (deps.ses === undefined) return problem(c, 503, 'Service Unavailable', 'sending domains are not configured')
+        const data = await body(c, sendingDomainCreateSchema)
+        if (data === null) return problem(c, 400, 'Bad Request')
+        const a = auth(c)
+        const domain = data.domain.toLowerCase()
+        const mailbox = data.mailbox.toLowerCase()
+        // our own zone is never a tenant's to send from — see the note above
+        if (isUnderPlatformDomain(domain, deps.platformDomain)) {
+          return problem(c, 400, 'Bad Request', 'that domain belongs to the platform')
+        }
+        // No SES call here. The identity is created only once ownership is proved, so a tenant cannot
+        // pre-register (or squat) identities in our account for domains they do not control, and a
+        // mistyped domain costs nothing to abandon.
+        const previous = await db.tenantSendingDomains.get(scopeOf(a))
+        const row = await db.tenantSendingDomains.put(scopeOf(a), { userId: a.userId }, {
+          domain, mailbox, txtToken: newTxtToken(), dkimTokens: [], sesIdentity: null,
+        })
+        // A replaced domain leaves an identity behind in our SES account. Unclaimed identities are
+        // both a quota leak (10 000 per account, and this route has no cap of its own) and something
+        // a later bug could adopt, so the old one goes as soon as the new row is committed.
+        if (deps.ses !== undefined && previous?.sesIdentity != null && previous.sesIdentity !== domain) {
+          if ((await db.tenantSendingDomains.otherHolders(scopeOf(a), previous.sesIdentity)) === 0) {
+            try {
+              await deps.ses.remove(previous.sesIdentity)
+            } catch (err) {
+              console.error('SES identity cleanup failed', previous.sesIdentity, err instanceof Error ? err.message : String(err))
+            }
+          }
+        }
+        return json(c, sendingDomainView(row), 201)
+      } },
+    { method: 'post', path: '/v1/tenant/sending-domain/verify', scopeClass: 'tenant', entity: 'sendingDomain', shape: 'collection', entitlement: 'customDomains',
+      handler: async (c) => {
+        if (!tenantWide(c)) return problem(c, 403, 'Forbidden', 'the sending domain is tenant-wide')
+        if (deps.ses === undefined) return problem(c, 503, 'Service Unavailable', 'sending domains are not configured')
+        const a = auth(c)
+        let row = await db.tenantSendingDomains.get(scopeOf(a))
+        if (row === null) return problem(c, 404, 'Not Found')
+        // OURS first, always. This is the proof that THIS tenant controls the zone; SES's answer is
+        // about the domain and would be identical for an impostor.
+        if (!(await verifyDomainTxt(deps.resolveTxt, row.domain, row.txtToken))) {
+          return problem(c, 400, 'Not Verified', 'ownership TXT record not found — check DNS and try again')
+        }
+        if (row.sesIdentity === null) {
+          // ownership just proved: NOW create the identity and hand back the DKIM records
+          try {
+            const created = await deps.ses.create(row.domain)
+            row = (await db.tenantSendingDomains.setDkim(scopeOf(a), { userId: a.userId }, {
+              dkimTokens: created.dkimTokens, sesIdentity: row.domain,
+            })) ?? row
+          } catch (err) {
+            console.error('SES identity create failed', row.domain, err instanceof Error ? err.message : String(err))
+            return problem(c, 502, 'Bad Gateway', 'could not create the sending identity')
+          }
+          return json(c, sendingDomainView(row))
+        }
+        let identity: Awaited<ReturnType<SesIdentityGateway['get']>>
+        try {
+          identity = await deps.ses.get(row.domain)
+        } catch (err) {
+          console.error('SES identity read failed', row.domain, err instanceof Error ? err.message : String(err))
+          return problem(c, 502, 'Bad Gateway', 'could not read the sending identity')
+        }
+        // Verified is the only state that changes what we SEND as. Anything else — still pending,
+        // SES still retrying, records genuinely wrong — leaves mail on the platform identity, which
+        // keeps arriving. An unverified sending domain must never become an unsent alert.
+        if (identity?.status === 'verified') {
+          try {
+            const done = await db.tenantSendingDomains.markVerified(scopeOf(a), { userId: a.userId })
+            return done === null ? problem(c, 404, 'Not Found') : json(c, sendingDomainView(done))
+          } catch (err) {
+            if (err instanceof SendingDomainConflictError) return problem(c, 409, 'Conflict', 'sending domain already verified by another tenant')
+            throw err
+          }
+        }
+        if (identity?.status === 'failed') {
+          const done = await db.tenantSendingDomains.markFailed(scopeOf(a), { userId: a.userId })
+          return done === null ? problem(c, 404, 'Not Found') : json(c, sendingDomainView(done))
+        }
+        return json(c, sendingDomainView(row))
+      } },
+    { method: 'delete', path: '/v1/tenant/sending-domain', scopeClass: 'tenant', entity: 'sendingDomain', shape: 'collection', entitlement: 'customDomains',
+      handler: async (c) => {
+        if (!tenantWide(c)) return problem(c, 403, 'Forbidden', 'the sending domain is tenant-wide')
+        // 503 here too: without the gateway the identity would survive as an orphan while the row —
+        // which the tenant could not then recreate, POST being 503 — is gone for good.
+        if (deps.ses === undefined) return problem(c, 503, 'Service Unavailable', 'sending domains are not configured')
+        const a = auth(c)
+        const row = await db.tenantSendingDomains.get(scopeOf(a))
+        if (row === null) return problem(c, 404, 'Not Found')
+        // The ROW goes first. If the SES call fails we have still stopped sending as that domain,
+        // which is the half that matters: a leftover identity in our account costs nothing and can
+        // be swept, while a row pointing at an identity we just deleted would sign nothing and drop
+        // the tenant's mail into spam.
+        await db.tenantSendingDomains.remove(scopeOf(a), { userId: a.userId })
+        // …but only tear the identity down if nobody else is standing on it. Two tenants can hold
+        // pending rows for one domain (only VERIFIED rows are exclusive), and removing the shared
+        // identity would stop the other tenant's mail — the exact "unverified becomes unsent" failure
+        // this feature refuses to cause, arriving from a third party.
+        if (row.sesIdentity !== null && (await db.tenantSendingDomains.otherHolders(scopeOf(a), row.sesIdentity)) === 0) {
+          try {
+            await deps.ses.remove(row.sesIdentity)
+          } catch (err) {
+            console.error('SES identity delete failed (row already removed)', row.sesIdentity, err instanceof Error ? err.message : String(err))
+          }
+        }
+        return json(c, { ok: true })
       } },
 
     // ── tenants (PLATFORM) ───────────────────────────────────────────────────

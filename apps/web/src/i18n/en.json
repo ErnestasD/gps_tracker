@@ -314,7 +314,8 @@
       "document": "Document",
       "maintenancePlan": "Maintenance plan",
       "branding_asset": "Brand image",
-      "deal_registration": "Deal registration"
+      "deal_registration": "Deal registration",
+      "sendingDomain": "Sending domain"
     },
     "a": {
       "create": "Created",
@@ -2056,5 +2057,29 @@
       "colors": "Pick your primary colour",
       "own_domain": "Move to your own domain — on ours, your customers see our hostname"
     }
+  },
+  "sending": {
+    "title": "Send mail from your own address",
+    "desc": "Alerts and account e-mails go out from us until you verify a domain of your own. Everything inside the message is already yours; this is the From line.",
+    "unavailable": "Not available on this installation yet. Your mail keeps going out, and nothing you have set up is affected.",
+    "mailboxLabel": "Mailbox name",
+    "domainLabel": "Your domain",
+    "add": "Set sending domain",
+    "verify": "Check verification",
+    "remove": "Remove",
+    "copied": "Copied",
+    "recordType": "Type",
+    "recordName": "Name / Host",
+    "recordValue": "Value / Target",
+    "pendingNote": "Add these three records to your DNS, then press Check. Until this verifies, your mail keeps going out from our address — nothing stops.",
+    "slowNote": "Verification can take up to an hour after the records are published. This is the slowest step in the whole setup and there is nothing to do but wait.",
+    "badDomain": "That domain or mailbox name is not valid.",
+    "upstreamError": "We could not reach our mail provider. This one is on us — try again shortly.",
+    "status": {
+      "pending": "Waiting for DNS",
+      "verified": "Verified",
+      "failed": "Not verified"
+    },
+    "ownershipNote": "Add this TXT record to your DNS and press Check. It proves the domain is yours — nothing is created in your name until it resolves. Your mail keeps going out from our address the whole time."
   }
 }

@@ -27,10 +27,15 @@ const COMPOSE = readFileSync(resolve(REPO, 'infra/compose/docker-compose.apps.ym
 const SOURCES = [
   'packages/shared/src/sms.ts',
   'apps/worker/src/sms/drivers.ts',
+  // ADR-036: the IAM user that manages tenant sending identities. Added because the omission it
+  // guards against actually happened again — the three keys were written to the code and to the
+  // README env table and NOT to the compose map, which would have meant a founder setting them,
+  // deploying, and watching the routes stay 503 with nothing anywhere to say why. Third time.
+  'apps/api/src/email/sesIdentities.ts',
 ] as const
 
 /** Prefixes of the integrations that fail QUIETLY when unset. */
-const SILENT_PREFIXES = /^(TWILIO|TELEGRAM|SES|SMTP|VAPID|GEOCODER|OSRM)_/
+const SILENT_PREFIXES = /^(AWS|TWILIO|TELEGRAM|SES|SMTP|VAPID|GEOCODER|OSRM)_/
 
 describe('compose env map covers every silently-gating env var the code reads', () => {
   it('maps them all', () => {

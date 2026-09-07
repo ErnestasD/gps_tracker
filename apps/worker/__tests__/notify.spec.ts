@@ -89,13 +89,13 @@ describe('E05-5 emailDriver + driversFromEnv', () => {
     const send = vi.fn(() => Promise.resolve())
     const transport: EmailTransport = { send }
     await emailDriver(transport).send(email('x@y.co'), { subject: 'S', text: 'B', html: '<p>H</p>' })
-    expect(send).toHaveBeenCalledWith({ to: 'x@y.co', subject: 'S', text: 'B', html: '<p>H</p>', replyTo: undefined, fromName: undefined })
+    expect(send).toHaveBeenCalledWith({ to: 'x@y.co', subject: 'S', text: 'B', html: '<p>H</p>', replyTo: undefined, fromName: undefined, fromAddress: undefined })
   })
 
   it('emailDriver passes html=undefined when a message has no html (plain-text only)', async () => {
     const send = vi.fn(() => Promise.resolve())
     await emailDriver({ send }).send(email('x@y.co'), { subject: 'S', text: 'B' })
-    expect(send).toHaveBeenCalledWith({ to: 'x@y.co', subject: 'S', text: 'B', html: undefined, replyTo: undefined, fromName: undefined })
+    expect(send).toHaveBeenCalledWith({ to: 'x@y.co', subject: 'S', text: 'B', html: undefined, replyTo: undefined, fromName: undefined, fromAddress: undefined })
   })
 
   it('driversFromEnv exposes telegram only when the token is set', () => {
@@ -212,6 +212,40 @@ describe('E05-5 notificationMessage', () => {
     expect(m.text).toContain('Device: Vilnius Van 1')
     // 00:00 UTC → 03:00 in Europe/Vilnius (UTC+3 in July)
     expect(m.text).toContain('When: 2026-07-09 03:00 (Europe/Vilnius)')
+  })
+
+  it('★ a reseller with a verified sending domain sends from THEIR address (ADR-036)', () => {
+    const m = notificationMessage('overspeed', '42', { speedKmh: 95, limitKmh: 90 }, new Date('2026-07-09T00:00:00Z'), {
+      brand: 'Acme Fleet',
+      whiteLabel: true,
+      sendingAddress: 'alertai@acme.lt',
+    })
+    expect(m.fromName).toBe('Acme Fleet')
+    expect(m.fromAddress).toBe('alertai@acme.lt')
+  })
+
+  it('★ a DIRECT customer never sends as someone else, even if a row says so', () => {
+    // The address follows the same white-label gate as the display name. A direct_* tenant bought
+    // OUR product and our identity is the right one for them; a stray sending-domain row must not
+    // be able to change whose name is on our own mail.
+    const m = notificationMessage('overspeed', '42', { speedKmh: 95, limitKmh: 90 }, new Date('2026-07-09T00:00:00Z'), {
+      brand: 'Acme Fleet',
+      whiteLabel: false,
+      sendingAddress: 'alertai@acme.lt',
+    })
+    expect(m.fromName).toBeUndefined()
+    expect(m.fromAddress).toBeUndefined()
+  })
+
+  it('a reseller WITHOUT a verified sending domain keeps their name over our address', () => {
+    // the state every reseller is in until ADR-036's DNS step completes: the display name is theirs,
+    // the address is ours, and mail keeps going out
+    const m = notificationMessage('overspeed', '42', { speedKmh: 95, limitKmh: 90 }, new Date('2026-07-09T00:00:00Z'), {
+      brand: 'Acme Fleet',
+      whiteLabel: true,
+    })
+    expect(m.fromName).toBe('Acme Fleet')
+    expect(m.fromAddress).toBeUndefined()
   })
 
   it('renders fuel_theft with a proper title + amount detail (not the raw slug)', () => {

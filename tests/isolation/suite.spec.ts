@@ -106,6 +106,15 @@ const TENANT_WIDE_ONLY: readonly (readonly [string, string, string?])[] = [
   ['GET', '/v1/tenant/domains/:id', 'domain'],
   ['DELETE', '/v1/tenant/domains/:id', 'domain'],
   ['POST', '/v1/tenant/domains/:id/verify', 'domain'],
+  // The SENDING identity is tenant-wide the same way the app domains above are, and the blast radius
+  // is the same shape: an account-pinned admin — an end customer's administrator — setting or
+  // deleting it changes, or stops, the mail every sibling account receives. crud.ts says in as many
+  // words that a guard added to a route without an entry here is "locked by nothing"; these are the
+  // entries.
+  ['GET', '/v1/tenant/sending-domain'],
+  ['POST', '/v1/tenant/sending-domain'],
+  ['POST', '/v1/tenant/sending-domain/verify'],
+  ['DELETE', '/v1/tenant/sending-domain'],
   // create is the one account method that ignores the pin — list/get/update/remove all honour it
   ['POST', '/v1/accounts'],
 ]
@@ -236,6 +245,7 @@ const paramEntity = (m: { method: string; path: string; entity: string }): strin
 const COLLECTIONS_WITHOUT_ID: Record<string, string> = {
   branding: 'GET /v1/tenant/branding returns a single object, and its scope is the JWT tenant — there is no foreign id it could contain. branding.spec.ts:112 covers it',
   mapToken: 'GET /v1/map/token returns one deployment-wide Mapbox credential, identical for every tenant — there are no rows and no foreign id. It is in the manifest for the AUTH sweep: minting costs us money, so it must never answer without a session (mapboxToken.spec.ts, branding.spec.ts)',
+  sendingDomain: "GET /v1/tenant/sending-domain returns ONE object or null — the table's tenantId is unique, so a tenant has at most one sending identity, and it is selected by the JWT tenant. There is no list and no foreign id it could contain. The cross-tenant case is asserted directly in branding.spec.ts ('one tenant cannot read or change another tenant sending identity'), where T2 reads null while T1 holds one and T2's DELETE answers 404",
   usage: 'daily aggregate rows carry no id; the tenant predicate is asserted directly below',
   webhookDelivery: 'covered by webhooks.spec.ts:142, which seeds a delivery in each tenant and compares the lists',
 }
