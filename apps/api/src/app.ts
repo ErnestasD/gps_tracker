@@ -4,7 +4,7 @@ import { collectDefaultMetrics, Counter, Gauge, Histogram, Registry } from 'prom
 import { HTTPException } from 'hono/http-exception'
 import { bodyLimit } from 'hono/body-limit'
 
-import { dbErrorHttp, type Db, type Pool } from '@orbetra/db'
+import { dbErrorHttp, readLatestValidFixes, type Db, type Pool } from '@orbetra/db'
 import { liveEventSchema, type LiveEvent } from '@orbetra/shared'
 
 import { problem } from './auth/middleware.js'
@@ -623,6 +623,32 @@ export function createApp(deps: ApiDeps, prom?: ApiProm): Hono<AuthEnv> {
         devices.push(parsed.data)
       } catch {
         // broken JSON in the hash — skip
+      }
+    }
+
+    /**
+     * BOOTSTRAP `lastFix` for devices that were ALREADY asleep.
+     *
+     * The worker carries the last placeable position forward from one report to the next, which is
+     * what keeps a parked vehicle on the map. A device that went to sleep before that shipped has
+     * nothing to carry, and cannot make one: bootstrapping needs a valid fix, and a sleeping
+     * Teltonika reports `satellites: 0` forever. The founder's car sat in his own yard reporting
+     * the correct coordinates, invisible, for twenty hours (2026-09-08).
+     *
+     * So durable history answers those, in ONE query for the whole snapshot, and only for the
+     * devices that actually need it — a fleet that is awake pays nothing. Deliberately not written
+     * back to Redis: the worker owns that hash, and a second writer racing its max-wins compare is
+     * a bug worth more than the query this saves.
+     */
+    const needFix = devices.filter((d) => !d.fixValid && d.lastFix === undefined).map((d) => d.deviceId)
+    // `deps.pool` is optional in the test harness; without it the snapshot is simply un-bootstrapped
+    if (needFix.length > 0 && deps.pool !== undefined) {
+      const known = await readLatestValidFixes(deps.pool, needFix.map((id) => BigInt(id))).catch(
+        () => new Map<string, { lat: number; lon: number; fixTimeMs: number }>(),
+      )
+      for (const d of devices) {
+        const hit = known.get(d.deviceId)
+        if (hit !== undefined) d.lastFix = hit
       }
     }
     return c.json({ devices })

@@ -112,6 +112,42 @@ export async function readOdometersKm(pool: Pool, deviceIds: bigint[]): Promise<
 }
 
 /**
+ * The newest PLACEABLE position for each of several devices — where each was last actually seen.
+ *
+ * A Teltonika in deep sleep reports on schedule with `satellites: 0`, so its newest row is
+ * unplaceable and the live snapshot has nothing to draw: the founder's car sat in his own yard
+ * reporting the right coordinates, invisible on the map, for twenty hours (2026-09-08). The worker
+ * carries the last good fix forward from here on, but a device ALREADY asleep has nothing to carry
+ * — it would need a valid fix to bootstrap one, which is exactly what it cannot produce. This is
+ * how those devices are answered, once, from durable history.
+ *
+ * Same LATERAL-per-device shape as `readOdometersKm` and for the same reason: it rides the
+ * (device_id, fix_time DESC) primary key instead of scanning each device's whole retention window.
+ *
+ * `fix_valid` AND a null-island guard, because the stored flag has been wrong before — ADR-039,
+ * and `placeableFix` in the web app applies the identical pair.
+ */
+export async function readLatestValidFixes(
+  pool: Pool,
+  deviceIds: bigint[],
+): Promise<Map<string, { lat: number; lon: number; fixTimeMs: number }>> {
+  const out = new Map<string, { lat: number; lon: number; fixTimeMs: number }>()
+  if (deviceIds.length === 0) return out
+  const res = await pool.query<{ device_id: string; lat: number; lon: number; fix_time: Date }>(
+    `SELECT d.device_id, p.lat, p.lon, p.fix_time
+       FROM unnest($1::int8[]) AS d(device_id)
+       CROSS JOIN LATERAL (
+         SELECT lat, lon, fix_time FROM positions
+          WHERE device_id = d.device_id AND fix_valid AND NOT (lat = 0 AND lon = 0)
+          ORDER BY fix_time DESC LIMIT 1
+       ) p`,
+    [deviceIds.map((d) => d.toString())],
+  )
+  for (const r of res.rows) out.set(r.device_id, { lat: r.lat, lon: r.lon, fixTimeMs: r.fix_time.getTime() })
+  return out
+}
+
+/**
  * The single NEWEST valid-fix position for a device — the live point a public share link shows.
  * Rule 6: `fix_valid=false` (satellites==0) rows are excluded, so a share never advertises a
  * bogus (0,0)-ish location. Caller resolves the device from the share token (unscoped by design,
