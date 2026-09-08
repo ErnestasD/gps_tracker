@@ -110,9 +110,16 @@ export function SendingDomainCard() {
    * counter that cannot be moved by the shape of the payload. The decision itself is
    * `shouldAttemptVerify` in lib/branding, where it is unit-tested; this is only the plumbing.
    *
-   * Errors go through the SAME handler as the button. The first version swallowed them, which meant
-   * a 409 — this domain is verified by another tenant and can NEVER verify for you — rendered as
-   * four green badges and a spinner, for ever, beside a button the layout had just demoted.
+   * Errors surface through `fail`, the same handler the other mutations use. An earlier version
+   * swallowed them, which meant a 409 — this domain is verified by another tenant and can NEVER
+   * verify for you — rendered as four green badges and a spinner, for ever.
+   *
+   * ── And there is no Check button ─────────────────────────────────────────────────────────────
+   * There was, briefly, and it was the thing that gave the panel away: a spinner saying "checking
+   * automatically" beside a button asking to be pressed says one of the two is lying. Pressing it
+   * could not help either — the wait is SES deciding, on its own clock, up to an hour after the
+   * records resolve, and asking twice does not make it decide sooner. The custom-domain panel this
+   * one is built to match has never had one.
    */
   const lastAttempt = useRef(0)
   useEffect(() => {
@@ -271,14 +278,6 @@ export function SendingDomainCard() {
             </div>
           )}
 
-          {/* A manual nudge remains for the reader who does not want to wait for the next tick. It
-              is secondary: the panel already does this on its own, and a primary button would say
-              otherwise. */}
-          {!verified && (
-            <AdminButton variant="secondary" onClick={() => check.mutate()} disabled={check.isPending} data-testid="sending-verify">
-              {t('sending.verify')}
-            </AdminButton>
-          )}
         </div>
       )}
 
