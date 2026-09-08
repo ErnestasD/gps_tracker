@@ -747,7 +747,12 @@
       "trails": "Bewegungsspuren",
       "labels": "Gerätenamen",
       "heat": "Dichte-Overlay",
-      "fenceVisibility": "Sichtbarkeit der Zonen"
+      "fenceVisibility": "Sichtbarkeit der Zonen",
+      "basemap": "Basiskarte",
+      "base": {
+        "streets": "Karte",
+        "satellite": "Satellit"
+      }
     }
   },
   "units": {

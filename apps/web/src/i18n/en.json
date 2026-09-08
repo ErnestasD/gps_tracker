@@ -747,7 +747,12 @@
       "trails": "Movement trails",
       "labels": "Device names",
       "heat": "Density overlay",
-      "fenceVisibility": "Zone visibility"
+      "fenceVisibility": "Zone visibility",
+      "basemap": "Base map",
+      "base": {
+        "streets": "Map",
+        "satellite": "Satellite"
+      }
     }
   },
   "units": {

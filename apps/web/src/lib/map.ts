@@ -7,7 +7,7 @@ import mapboxgl, { type MapOptions, type StyleSpecification } from 'mapbox-gl'
 
 // relative (not '@/') so the vitest suite can import this module without alias config
 import { fetchMapToken } from './api'
-import { getDisplayPrefs, getTheme, onPrefsChange, onThemeChange, type Theme } from './prefs'
+import { getDisplayPrefs, getTheme, onPrefsChange, onThemeChange, type MapBasemapPref, type Theme } from './prefs'
 
 // pk. tokens are public by design — they ship in the client bundle (config, not a
 // secret; rule 12 unaffected). URL-restricted in the Mapbox dashboard (ADR-030).
@@ -53,7 +53,13 @@ export async function primeMapToken(): Promise<void> {
  * more colour, and readable country/region borders — a better fit for a fleet map than the
  * washed-out monochrome bases. `emphasizeAdminBoundaries` further lifts the borders.
  */
-export function styleForTheme(theme: Theme): string {
+export function styleForTheme(theme: Theme, basemap: MapBasemapPref = 'streets'): string {
+  // Imagery has no light and dark of its own — the ground looks the way it looks — so the scheme
+  // stops applying here. `satellite-streets` rather than bare `satellite`: roads and place names
+  // over the imagery are what makes it usable for finding a vehicle, rather than pretty.
+  if (basemap === 'satellite') {
+    return (import.meta.env.VITE_MAPBOX_STYLE_SATELLITE as string | undefined) ?? 'mapbox://styles/mapbox/satellite-streets-v12'
+  }
   return theme === 'dark'
     ? ((import.meta.env.VITE_MAPBOX_STYLE_DARK as string | undefined) ?? 'mapbox://styles/mapbox/navigation-night-v1')
     : ((import.meta.env.VITE_MAPBOX_STYLE_LIGHT as string | undefined) ?? 'mapbox://styles/mapbox/navigation-day-v1')
@@ -199,8 +205,10 @@ const GOOGLE_DARK_STYLES = [
 
 /** Session tokens are Google's own currency for the Tiles API (valid ~2 weeks) — cached per
  * scheme in localStorage so a reload does not re-create one. */
-async function googleSession(scheme: Theme): Promise<string> {
-  const cacheKey = `orbetra.gmaptiles.${scheme}`
+async function googleSession(scheme: Theme, basemap: MapBasemapPref = 'streets'): Promise<string> {
+  // the basemap is part of the SESSION, not of the tile URL, so it belongs in the cache key —
+  // reusing a roadmap session for satellite silently serves the wrong imagery
+  const cacheKey = `orbetra.gmaptiles.${basemap}.${scheme}`
   try {
     const c = JSON.parse(localStorage.getItem(cacheKey) ?? 'null') as { token?: string; exp?: number } | null
     if (c?.token != null && typeof c.exp === 'number' && c.exp > Date.now()) return c.token
@@ -211,10 +219,11 @@ async function googleSession(scheme: Theme): Promise<string> {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      mapType: 'roadmap',
+      mapType: basemap === 'satellite' ? 'satellite' : 'roadmap',
       language: navigator.language || 'en-US',
       region: 'LT',
-      ...(scheme === 'dark' ? { styles: GOOGLE_DARK_STYLES } : {}),
+      // the dark restyle is for the DRAWN map; applying it to imagery would tint the ground
+      ...(scheme === 'dark' && basemap !== 'satellite' ? { styles: GOOGLE_DARK_STYLES } : {}),
     }),
   })
   if (!res.ok) throw new Error(`createSession ${res.status}`)
@@ -249,11 +258,11 @@ function googleStyleSpec(session: string): StyleSpecification {
 }
 
 /** Provider + scheme, resolved from the display prefs ('auto' scheme follows the app theme). */
-export function mapPrefs(): { provider: 'mapbox' | 'google'; scheme: Theme } {
+export function mapPrefs(): { provider: 'mapbox' | 'google'; scheme: Theme; basemap: MapBasemapPref } {
   const p = getDisplayPrefs()
   const provider = p.mapProvider === 'google' && GOOGLE_MAPS_KEY !== '' ? 'google' : 'mapbox'
   const scheme: Theme = p.mapScheme === 'auto' ? getTheme() : p.mapScheme
-  return { provider, scheme }
+  return { provider, scheme, basemap: p.mapBasemap }
 }
 
 export interface ThemedMap {
@@ -294,7 +303,7 @@ export function createThemedMap(container: HTMLElement, opts: ThemedMapOptions =
       // Google starts on the SAME-scheme Mapbox style and swaps once the tile session lands —
       // a base under the vehicles from the first frame beats a black void while a network
       // round-trip completes, and the swap reuses the ordinary style.load re-setup path.
-      style: styleForTheme(initial.scheme),
+      style: styleForTheme(initial.scheme, initial.basemap),
       // Mapbox attribution + logo stay visible on every map view (TOS, ADR-030)
       attributionControl: true,
       antialias: true,
@@ -318,18 +327,18 @@ export function createThemedMap(container: HTMLElement, opts: ThemedMapOptions =
 
   /** Apply the CURRENT provider+scheme. Async because the Google session is a network fetch;
    *  a stale application (prefs changed again mid-fetch) is dropped by the key check. */
-  let appliedKey = `mapbox:${initial.scheme}` // what the constructor already put on screen
+  let appliedKey = `mapbox:${initial.scheme}:${initial.basemap}` // what the constructor already put on screen
   const apply = () => {
-    const { provider, scheme } = mapPrefs()
-    const key = `${provider}:${scheme}`
+    const { provider, scheme, basemap } = mapPrefs()
+    const key = `${provider}:${scheme}:${basemap}`
     if (key === appliedKey) return
     appliedKey = key
     if (provider === 'mapbox') {
       onBeforeStyleSwap?.()
-      map.setStyle(styleForTheme(scheme))
+      map.setStyle(styleForTheme(scheme, basemap))
       return
     }
-    void googleSession(scheme)
+    void googleSession(scheme, basemap)
       .then((session) => {
         if (disposed || appliedKey !== key) return
         onBeforeStyleSwap?.()
@@ -341,7 +350,7 @@ export function createThemedMap(container: HTMLElement, opts: ThemedMapOptions =
         console.error('google tiles session failed', err)
         if (disposed || appliedKey !== key) return
         onBeforeStyleSwap?.()
-        map.setStyle(styleForTheme(scheme))
+        map.setStyle(styleForTheme(scheme, basemap))
       })
   }
   if (initial.provider === 'google') apply() // constructor drew Mapbox; catch up to the pref

@@ -21,7 +21,7 @@ import { useAccountContext } from '@/lib/accountContext'
 import { buildTrailFeatures, liveStore, type ScrubState } from '@/lib/liveStore'
 import { DEFAULT_LAYERS, loadLayers, saveLayers, type MapLayers } from '@/lib/mapLayers'
 import { getTrack, placeableFix, trackTimes } from '@/lib/telemetry'
-import { getDisplayPrefs } from '@/lib/prefs'
+import { getDisplayPrefs, onPrefsChange, setDisplayPref } from '@/lib/prefs'
 import { dayView, isLive, LIVE_VIEW, panView, viewWindow, WINDOW_BUCKET_MS, zoomView, type TrackView } from '@/lib/trackWindow'
 import { useUnits } from '@/lib/units'
 import { cn } from '@/lib/utils'
@@ -737,6 +737,9 @@ function LayersMenu({
   onClose: () => void
 }) {
   const { t } = useTranslation()
+  // the basemap lives in display prefs, not in this component's props: it is a device-local
+  // preference the Settings page also writes, and both surfaces must agree without one owning it
+  const basemap = useSyncExternalStore(onPrefsChange, () => getDisplayPrefs().mapBasemap)
   // Escape closes it, because a menu that only closes by clicking the scrim is a menu keyboard
   // users cannot dismiss.
   useEffect(() => {
@@ -762,6 +765,27 @@ function LayersMenu({
           <button type="button" onClick={onClose} aria-label={t('info.close')} className="text-muted hover:text-text">
             <X className="h-3.5 w-3.5" aria-hidden />
           </button>
+        </div>
+        {/* THE BASE the vehicles are drawn on, above the overlay toggles because it is a different
+            kind of choice: one base at a time, rather than things switched on over it. Both
+            providers offer imagery, so this works whichever the operator picked in Settings —
+            Mapbox swaps the style, Google opens a satellite tile session. */}
+        <div className="mb-3 flex gap-1 rounded-md border border-line p-0.5" role="group" aria-label={t('map.layers.basemap')}>
+          {(['streets', 'satellite'] as const).map((b) => (
+            <button
+              key={b}
+              type="button"
+              onClick={() => setDisplayPref('mapBasemap', b)}
+              aria-pressed={basemap === b}
+              data-testid={`basemap-${b}`}
+              className={cn(
+                'flex-1 rounded px-2 py-1 text-xs transition-colors',
+                basemap === b ? 'bg-surface-2 font-medium text-text' : 'text-muted hover:text-text',
+              )}
+            >
+              {t(`map.layers.base.${b}`)}
+            </button>
+          ))}
         </div>
         <div className="space-y-2">
           {rows.map((key) => (

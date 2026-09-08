@@ -54,6 +54,8 @@ export type DateFormatPref = 'auto' | 'ymd' | 'dmy' | 'mdy'
 export type { DistanceUnit, SpeedUnit, VolumeUnit }
 
 export type MapProviderPref = 'mapbox' | 'google'
+/** Drawn map, or aerial imagery. Both providers offer both; the scheme only applies to the drawn one. */
+export type MapBasemapPref = 'streets' | 'satellite'
 /** 'auto' follows the app theme; 'light'/'dark' pin the BASEMAP colours independently of it. */
 export type MapSchemePref = 'auto' | 'light' | 'dark'
 
@@ -68,6 +70,8 @@ export interface DisplayPrefs {
   /** Basemap provider (ADR-038): Mapbox styles, or Google 2D tiles rendered in the same GL engine. */
   mapProvider: MapProviderPref
   mapScheme: MapSchemePref
+  /** The BASE the vehicles are drawn on: a drawn map, or aerial imagery. */
+  mapBasemap: MapBasemapPref
 }
 
 const PREFS_KEY = 'orbetra.prefs'
@@ -82,6 +86,7 @@ export const DEFAULT_DISPLAY_PREFS: DisplayPrefs = {
   unitVolume: 'l',
   mapProvider: 'mapbox',
   mapScheme: 'auto',
+  mapBasemap: 'streets',
 }
 
 const oneOf = <T extends string>(v: unknown, allowed: readonly T[], fallback: T): T =>
@@ -99,6 +104,7 @@ function sanitizePrefs(v: unknown): DisplayPrefs {
     unitVolume: oneOf(o['unitVolume'], ['l', 'gal'], DEFAULT_DISPLAY_PREFS.unitVolume),
     mapProvider: oneOf(o['mapProvider'], ['mapbox', 'google'], DEFAULT_DISPLAY_PREFS.mapProvider),
     mapScheme: oneOf(o['mapScheme'], ['auto', 'light', 'dark'], DEFAULT_DISPLAY_PREFS.mapScheme),
+    mapBasemap: oneOf(o['mapBasemap'], ['streets', 'satellite'], DEFAULT_DISPLAY_PREFS.mapBasemap),
   }
 }
 
