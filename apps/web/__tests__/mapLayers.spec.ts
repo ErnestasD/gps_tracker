@@ -53,6 +53,13 @@ it('every layer has a label — a switch cannot ship showing its own i18n key', 
   // The menu renders `t(`map.layers.${key}`)` over Object.keys(DEFAULT_LAYERS); i18next falls back
   // to the key, so a layer added here and nowhere else appears to the operator as
   // "map.layers.whatever" in all four languages.
-  const labels = (en as { map: { layers: Record<string, string> } }).map.layers
+  const labels = (en as { map: { layers: Record<string, unknown> } }).map.layers
   for (const key of Object.keys(DEFAULT_LAYERS)) expect(labels[key], key).toBeTypeOf('string')
+})
+
+it('every basemap has a label too', () => {
+  // the base is a different KIND of choice from the overlays — one at a time — but it fails the
+  // same way: an unlabelled option reads as "map.layers.base.satellite" in all four languages
+  const base = (en as { map: { layers: { base?: Record<string, unknown> } } }).map.layers.base
+  for (const key of ['streets', 'satellite']) expect(base?.[key], key).toBeTypeOf('string')
 })

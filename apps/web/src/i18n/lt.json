@@ -747,7 +747,12 @@
       "trails": "Judėjimo pėdsakai",
       "labels": "Įrenginių pavadinimai",
       "heat": "Tankio sluoksnis",
-      "fenceVisibility": "Geozonų matomumas"
+      "fenceVisibility": "Geozonų matomumas",
+      "basemap": "Pagrindas",
+      "base": {
+        "streets": "Žemėlapis",
+        "satellite": "Palydovinis"
+      }
     }
   },
   "units": {

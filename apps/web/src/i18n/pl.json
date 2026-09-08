@@ -747,7 +747,12 @@
       "trails": "Ślady ruchu",
       "labels": "Nazwy urządzeń",
       "heat": "Warstwa gęstości",
-      "fenceVisibility": "Widoczność stref"
+      "fenceVisibility": "Widoczność stref",
+      "basemap": "Podkład",
+      "base": {
+        "streets": "Mapa",
+        "satellite": "Satelita"
+      }
     }
   },
   "units": {
