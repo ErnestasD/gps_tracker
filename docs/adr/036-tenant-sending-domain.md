@@ -94,8 +94,14 @@ never silently stop a customer's alerts.
 - **Their bounces land on our SES reputation.** Mitigated with a per-tenant SES configuration set so
   the metrics are attributable, and an identity can be deleted. This is the real cost of the
   decision and it is the reason a sending domain is a TSP-plan entitlement, not a free-tier toggle.
-- **A new runtime dependency** (`@aws-sdk/client-sesv2`) in apps/api — the reason this ADR exists
-  (hard rule 10). Scoped to two calls; the send path keeps using nodemailer.
+- **A new runtime dependency** (`@aws-sdk/client-sesv2`) in apps/api **and apps/worker** — the reason
+  this ADR exists (hard rule 10). The send path keeps using nodemailer; nothing here runs per message.
+  The worker was added on 2026-09-08, because this ADR described the settings screen and stopped
+  there: the panel advances the setup while somebody has it open, and that was the ONLY thing that
+  did. A reseller who published their records and closed the tab had SES verify an hour later with
+  the row left `pending` and their mail still leaving as the platform — silently, since that state is
+  indistinguishable from the normal wait. Seen on the founder's own domain. The worker holds ONE
+  command (`GetEmailIdentity`); creating and deleting stay in the API, where a human is waiting.
 - **New AWS credentials.** The server today holds SES *SMTP* credentials only, which cannot manage
   identities. An IAM user limited to `ses:CreateEmailIdentity`, `ses:GetEmailIdentity`,
   `ses:DeleteEmailIdentity` and `ses:PutEmailIdentityMailFromAttributes` is required. Absent them the

@@ -82,6 +82,12 @@ services:
       # W-5 note in docs/audit/tsp-whitelabel-2026-09.md. Listed here because `--env-file` only
       # feeds compose interpolation, so an unlisted variable never reaches the process.
       PLATFORM_DOMAIN: ${PLATFORM_DOMAIN:-}
+      # ADR-036: the sweep that finishes a tenant's sending-domain verification when nobody has the
+      # settings panel open. Same three keys the api reads; absent ⇒ the sweep counts and does
+      # nothing, which is a supported state and not a broken one.
+      AWS_REGION: ${AWS_REGION:-}
+      SES_ADMIN_ACCESS_KEY_ID: ${SES_ADMIN_ACCESS_KEY_ID:-}
+      SES_ADMIN_SECRET_ACCESS_KEY: ${SES_ADMIN_SECRET_ACCESS_KEY:-}
       SITE_BASE_URL: ${SITE_BASE_URL:-}
       # OUR logo on mail that is not white-labelled (apps/site serves /email-logo.png). Absent ⇒ the
       # header stays the product name as text — a broken image is worse than none on the line that

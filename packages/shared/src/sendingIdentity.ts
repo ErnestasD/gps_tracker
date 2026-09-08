@@ -38,3 +38,29 @@ export function dkimRecords(domain: string, tokens: readonly string[]): DkimReco
   const d = domain.trim().toLowerCase()
   return tokens.map((t) => ({ name: `${t}._domainkey.${d}`, value: `${t}.dkim.amazonses.com` }))
 }
+
+/** How SES describes an identity, reduced to the three states we model. */
+export type IdentityStatus = 'pending' | 'verified' | 'failed'
+
+/**
+ * Map SES's DKIM status onto ours.
+ *
+ * `TEMPORARY_FAILURE` is deliberately NOT `failed`: SES uses it while it is still retrying the DNS
+ * lookup, and telling a tenant "failed" about records they published correctly two minutes ago sends
+ * them to delete and re-add them, which restarts the clock. It reads as still pending, which is what
+ * it is.
+ *
+ * Shared because two callers ask SES the same question — the settings routes and the sweep that
+ * finishes the job when nobody has the panel open — and a second copy of this switch is a second
+ * chance to disagree about what `TEMPORARY_FAILURE` means.
+ */
+export function dkimStatusOf(sesDkimStatus: string | undefined): IdentityStatus {
+  switch (sesDkimStatus) {
+    case 'SUCCESS':
+      return 'verified'
+    case 'FAILED':
+      return 'failed'
+    default:
+      return 'pending'
+  }
+}

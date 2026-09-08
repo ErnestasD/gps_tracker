@@ -38,6 +38,9 @@ import { startRejectDrainWorker } from './jobs/rejectDrainWorker.js'
 import { createStripeUsageQueue, scheduleStripeUsage } from './jobs/stripeUsageQueue.js'
 import { backfillDaysFromEnv, createStripeUsageWorker } from './jobs/stripeUsageWorker.js'
 import { createLapseSweepQueue, scheduleLapseSweep } from './jobs/lapseSweepQueue.js'
+import { createSendingVerifyQueue, scheduleSendingVerify } from './jobs/sendingVerifyQueue.js'
+import { startSendingVerifyWorker } from './jobs/sendingVerifyWorker.js'
+import { sesStatusReader } from './notify/sesStatus.js'
 import { createLapseSweepWorker, graceDaysFromEnv } from './jobs/lapseSweepWorker.js'
 import { stripeUsagePortFromEnv } from './billing/usageReporter.js'
 import { createScheduledReportQueue, scheduleScheduledReports } from './jobs/scheduledReportQueue.js'
@@ -373,6 +376,34 @@ async function main(): Promise<void> {
     onUnreachable: () => prom.billingLapseUnreachable.inc(),
   })
   await scheduleLapseSweep(lapseSweepQueue)
+  /**
+   * ADR-036: finish a tenant's sending-domain verification when nobody is watching.
+   *
+   * The settings panel polls and advances itself, which is the fast path and was the ONLY path. A
+   * reseller who publishes their DKIM records and closes the tab had nothing to complete the job:
+   * SES verifies an hour later, the row stays `pending`, and their mail keeps going out as the
+   * platform — indefinitely, and silently, because that state is indistinguishable from the normal
+   * wait. Seen on the founder's own domain.
+   *
+   * Absent credentials the sweep still runs and simply counts, the same shape as the routes' 503:
+   * a deployment that cannot ask SES anything is a supported state, not a broken one.
+   */
+  const sesAdmin = process.env['AWS_REGION']?.trim() && process.env['SES_ADMIN_ACCESS_KEY_ID']?.trim() && process.env['SES_ADMIN_SECRET_ACCESS_KEY']?.trim()
+    ? sesStatusReader({
+        region: process.env['AWS_REGION'].trim(),
+        accessKeyId: process.env['SES_ADMIN_ACCESS_KEY_ID'].trim(),
+        secretAccessKey: process.env['SES_ADMIN_SECRET_ACCESS_KEY'].trim(),
+      })
+    : undefined
+  if (sesAdmin === undefined) console.warn('SES identity management not configured — sending-domain verification will not complete on its own')
+  const sendingVerifyQueue = createSendingVerifyQueue(recomputeConn)
+  const sendingVerifyWorker = startSendingVerifyWorker({
+    connection: recomputeConn,
+    pool,
+    readIdentity: sesAdmin,
+    onFailed: () => prom.jobFailed.inc({ job: 'sending_verify' }),
+  })
+  await scheduleSendingVerify(sendingVerifyQueue)
   // V1-nice: scheduled emailed reports — hourly cron runs due schedules + e-mails them. Only when
   // email is configured (no transport ⇒ nothing to send); reuses the same SES SMTP as notifications.
   const scheduledReportQueue = emailTransport !== undefined ? createScheduledReportQueue(recomputeConn) : null
@@ -862,6 +893,8 @@ async function main(): Promise<void> {
       await stripeUsageWorker?.close() // finish the in-flight overage report, stop taking new
       await stripeUsageQueue?.close()
       await lapseSweepWorker.close() // finish the in-flight lapse sweep, stop taking new
+      await sendingVerifyWorker.close() // …and the in-flight SES identity poll
+      await sendingVerifyQueue.close()
       await lapseSweepQueue.close()
       await authEmailQueue.close()
       await scheduledReportWorker?.close() // finish the in-flight scheduled-report run, stop taking new
