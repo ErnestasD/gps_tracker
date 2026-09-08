@@ -293,10 +293,10 @@ describe('display units', () => {
   it('a bitfield reads as bits, not as a decimal nobody can parse', () => {
     // AVL 132 arrived as 36028797018963969. The name is Teltonika's own statement that it is a
     // bitfield; what each BIT means is documented on the adapter pages, not here, so nothing is
-    // decoded — only the base is honest. (132 itself is hidden now at the founder's request; 123
-    // carries the same shape and is still shown.)
-    expect(row('Control State Flags', 1048576)?.value).toBe('0x100000')
-    expect(row('Control State Flags', 1048576)?.label).toBe('Control State Flags')
+    // decoded — only the base is honest. (132 and 123 are both hidden now at the founder's
+    // request, so the rule is shown here on another element carrying the same shape.)
+    expect(row('Extended Security Flags', 1048576)?.value).toBe('0x100000')
+    expect(row('Extended Security Flags', 1048576)?.label).toBe('Extended Security Flags')
   })
 })
 
@@ -342,16 +342,21 @@ describe('units the source gets wrong', () => {
 })
 
 describe('rows the operator asked us to stop showing', () => {
-  it('Security State Flags is hidden, and nothing near it is', () => {
-    // AVL 132's per-bit meanings are documented on the adapter pages, not the data-sending table,
-    // so the row could only ever be a raw pattern (founder, 2026-09-08). The element is still
-    // decoded and stored — this hides a row.
+  it('both state-flag bitfields are hidden, and nothing near them is', () => {
+    // AVL 132 and 123 are documented per-bit on the adapter pages, not in the data-sending table,
+    // so either row could only ever be a raw pattern (founder, 2026-09-08). Both elements are still
+    // decoded and stored — this hides rows.
     const labels = {
       'Security State Flags': { name: 'Security State Flags' },
       'Control State Flags': { name: 'Control State Flags' },
+      // a name that merely CONTAINS one of them must survive: hiding is exact, not a substring
+      'Control State Flags Extended': { name: 'Control State Flags Extended' },
       'Fuel Level': { name: 'Fuel Level', units: 'l' },
     }
-    const rows = telemetryRows({ 'Security State Flags': 1, 'Control State Flags': 2, 'Fuel Level': 40 }, labels)
-    expect(rows.map((r) => r.label)).toEqual(['Control State Flags', 'Fuel Level (l)'])
+    const rows = telemetryRows(
+      { 'Security State Flags': 1, 'Control State Flags': 2, 'Control State Flags Extended': 3, 'Fuel Level': 40 },
+      labels,
+    )
+    expect(rows.map((r) => r.label)).toEqual(['Control State Flags Extended', 'Fuel Level (l)'])
   })
 })
