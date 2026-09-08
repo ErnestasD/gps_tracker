@@ -166,23 +166,82 @@ const NAMED_UNITS: Record<string, (v: number) => string> = {
  * nothing more than "Control state flags", and the per-bit tables live on the LV-CAN200/ALL-CAN300
  * adapter pages. Guessing them would be inventing byte semantics (CLAUDE.md rule 8).
  */
+/**
+ * Elements the operator asked us to stop showing.
+ *
+ * `Security State Flags` (AVL 132) is an 8-byte bitfield whose per-bit meanings live on the LV-CAN
+ * adapter pages, not in the data-sending table, so we can only ever print the raw pattern. The
+ * founder called it noise on a screen meant to answer "what is this vehicle doing" (2026-09-08).
+ * The element is still DECODED and stored — this hides one row, it does not drop data.
+ *
+ * Matched on the dictionary name, lower-cased, like every other rule in this file.
+ */
+const HIDDEN_NAMES: ReadonlySet<string> = new Set(['security state flags'])
+
+const isHidden = (label: AttrLabel | undefined): boolean =>
+  label !== undefined && HIDDEN_NAMES.has(label.name.trim().toLowerCase())
+
 const isFlags = (label: AttrLabel): boolean => /\bflags$/i.test(label.name.trim())
 
 /**
- * The unit a READER is shown — not always the unit the wiki stores.
+ * A dilution-of-precision index. Dimensionless by definition — and the wiki says otherwise.
  *
- * The label and the value MUST agree, and they did not: "Total Mileage (m)" sat beside
- * "362852.00 km", because the value converted metres to kilometres and the label printed the
- * dictionary's cell. One function now answers the question for both, so they cannot drift again.
- *
- * Metres are an odometer's storage unit, minutes are an hour-meter's (AVL 103 is literally named
- * "Engine Total Hours" and counts minutes) — neither is what the reader wants.
+ * The FTC887 table declares `GNSS HDOP` and `GNSS PDOP` in METRES, which is simply wrong: DOP is a
+ * ratio describing satellite geometry, not a distance. Believing the cell rendered "GNSS HDOP (km)
+ * 0.01 km" on the founder's own device (2026-09-08).
  */
+// HDOP / PDOP / VDOP / GDOP / TDOP — `\bdop\b` does NOT match "HDOP": the boundary needs a
+// non-word character before the `d`, and there is a letter there.
+const isDop = (label: AttrLabel): boolean => /\b[ghptv]?dop\b/i.test(label.name)
+
+/**
+ * Is this element a distance COUNTER — the only kind whose metres a reader wants in kilometres?
+ *
+ * `m` is not evidence on its own. It was treated as though it were, because on the FMC150 table
+ * every metre-unit element really is an odometer (87 Total Mileage, 105 counted, 199 Trip Odometer,
+ * two tachograph distances) — I checked that table and then applied the rule to all 37.
+ */
+const isDistanceCounter = (label: AttrLabel): boolean =>
+  /\b(mileage|odometer|distance|trip\s+distance)\b/i.test(label.name)
+
+/**
+ * How a stored value becomes a readable one: the factor, the digits, and the unit BOTH sides show.
+ *
+ * Two rules, and the difference between them is the whole lesson. A milli- prefix is arithmetic —
+ * mV is a thousandth of a volt on every table in the world, so scaling it needs no knowledge of the
+ * element. Metres and minutes are CLAIMS about what the element measures, so they are gated on the
+ * name: an odometer's metres are kilometres, an hour-meter's minutes are hours, and a DOP index's
+ * "metres" are a mistake in the source.
+ *
+ * Returning one object for both the label and the value is what keeps "Total Mileage (m)" from ever
+ * again sitting beside "362852.00 km".
+ */
+interface Scale {
+  unit: string | undefined
+  factor: number
+  digits: number
+}
+
+function scaleFor(label: AttrLabel): Scale | null {
+  const u = label.units
+  if (u === undefined) return null
+  // SI prefixes: pure arithmetic, safe on any element. The founder reported "12787" where an
+  // operator reads volts on 2026-08-20; making the dictionary win reintroduced it for every table
+  // that declares mV, which is most of them.
+  if (u === 'mV') return { unit: 'V', factor: 1 / 1000, digits: 1 }
+  if (u === 'mA') return { unit: 'A', factor: 1 / 1000, digits: 1 }
+  if (u === 'm' && isDistanceCounter(label)) return { unit: 'km', factor: 1 / 1000, digits: 2 }
+  // AVL 103 is named "Engine Total Hours" and counts MINUTES; a counter that only grows is read
+  // in decimal hours
+  if (u === 'min' && /\bhours?\b/i.test(label.name)) return { unit: 'h', factor: 1 / 60, digits: 1 }
+  return null
+}
+
+/** The unit a READER is shown — not always the unit the wiki stores. */
 function displayUnit(label: AttrLabel): string | undefined {
   if (isFlags(label)) return undefined
-  if (label.units === 'm') return 'km'
-  if (label.units === 'min') return 'h'
-  return label.units
+  if (isDop(label)) return undefined // a ratio has no unit, whatever the cell says
+  return scaleFor(label)?.unit ?? label.units
 }
 
 /** Value formatter that knows the element's unit when the NAME is a documented one. */
@@ -207,9 +266,8 @@ export const fmtAttrValue = (key: string, v: unknown, label?: AttrLabel): string
       // a bitfield is a pattern of bits, not a quantity — base 10 hides that entirely
       if (isFlags(label)) return `0x${(scaled >>> 0 === scaled ? scaled : Math.trunc(scaled)).toString(16).toUpperCase()}`
       const unit = displayUnit(label)
-      if (label.units === 'm') return `${(scaled / 1000).toFixed(2)} km`
-      // an hour-meter reported in minutes: decimal hours is how every hour-meter is read
-      if (label.units === 'min') return `${(scaled / 60).toFixed(1)} h`
+      const rescale = isDop(label) ? null : scaleFor(label)
+      if (rescale !== null) return `${(scaled * rescale.factor).toFixed(rescale.digits)}${rescale.unit === undefined ? '' : ` ${rescale.unit}`}`
       // a multiplied value is fractional by construction; an unmultiplied one is shown as sent
       const shown = mult !== 1 ? scaled.toFixed(1) : String(scaled)
       return unit === undefined ? shown : `${shown} ${unit}`
@@ -249,6 +307,7 @@ export function telemetryRows(
   const rows = Object.entries(attrs).flatMap<TelemetryRow>(([key, value]) => {
     const raw = /^io_(\d+)$/.exec(key)
     const label = labels[key]
+    if (isHidden(label)) return []
     const section = sectionOf(label)
     // one bitmask, three states an operator actually reads — see DOOR_PARTS
     if (isDoorBitmask(label) && typeof value === 'number') {

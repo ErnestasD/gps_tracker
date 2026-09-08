@@ -696,7 +696,8 @@
         "hood": "Variklio dangtis",
         "open": "Atidaryta",
         "closed": "Uždaryta"
-      }
+      },
+      "reopen": "Rodyti {{name}} skydelį"
     },
     "title": "Žemėlapis realiuoju laiku",
     "toggleList": "Rodyti arba slėpti įrenginių sąrašą",

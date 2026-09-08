@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { Bell, Layers, Maximize2, Minimize2, PanelLeft, Pause, Play, X } from 'lucide-react'
+import { Bell, ChevronLeft, ChevronUp, Layers, Maximize2, Minimize2, PanelLeft, Pause, Play, X } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -108,6 +108,24 @@ export function MapPage() {
     return (id: string) => m.get(id) ?? id
   }, [devices.data])
 
+  /**
+   * The map LABEL, which is not the same thing as `nameOf`.
+   *
+   * `nameOf` falls back to the raw id, which is right where a name must appear no matter what — the
+   * inspector header, a list row. On the map it is wrong: positions arrive for every device the
+   * stream carries, while `devices.data` is the CRUD list, so a vehicle outside it gets labelled
+   * "496". Switching the names layer on then covered the map in bare numbers, which is why the
+   * founder read it as nothing having happened (2026-09-08) — the layer WAS switching (verified
+   * live: visible → none), it just had nothing worth drawing.
+   *
+   * An empty string draws no symbol at all, which is the honest answer to "we do not know this
+   * vehicle's name".
+   */
+  const mapLabelOf = useMemo(() => {
+    const m = new Map((devices.data ?? []).map((d) => [d.id, d.plate ? `${d.name} (${d.plate})` : d.name]))
+    return (id: string) => m.get(id) ?? ''
+  }, [devices.data])
+
   /** Plate and driver as the fleet recorded them — the two things a dispatcher searches by. */
   const detailOf = useMemo(() => {
     const drivers = new Map((driversQ.data ?? []).map((d) => [d.id, d.name]))
@@ -193,6 +211,20 @@ export function MapPage() {
   const viewRef = useRef(view)
   viewRef.current = view
   const [trackWindow, setTrackWindow] = useState(() => viewWindow(LIVE_VIEW, Date.now()))
+  /**
+   * Is the device rail open? Closing it used to `select(null)` — the panel and the map's whole
+   * selection went at once, so the only way back was finding the vehicle in the list again
+   * (founder, 2026-09-08). Closing a details panel should not un-choose the thing it details: the
+   * halo, the trail and Follow all stay, and the rail comes back from a handle on the edge.
+   * Re-selecting, or picking another vehicle, reopens it.
+   */
+  const [railOpen, setRailOpen] = useState(true)
+  const [railFor, setRailFor] = useState(snap.selectedId)
+  if (railFor !== snap.selectedId) {
+    setRailFor(snap.selectedId)
+    setRailOpen(true)
+  }
+
   const [windowFor, setWindowFor] = useState(snap.selectedId)
   if (windowFor !== snap.selectedId) {
     setWindowFor(snap.selectedId)
@@ -530,7 +562,7 @@ export function MapPage() {
             layers={layers}
             geofences={fenceFeatures}
             history={history}
-            labelOf={nameOf}
+            labelOf={mapLabelOf}
             hasSelection={snap.selectedId !== null}
             statusFilter={filter}
           />
@@ -580,7 +612,7 @@ export function MapPage() {
           )}
         </div>
 
-        {selected && (
+        {selected && railOpen && (
           /* A rail on a wide screen; a bottom sheet on a narrow one. Not `xl:flex` alone: that
              left every viewport under 1280px with a selected device and no way to see it, which is
              worse than the floating card this replaced. */
@@ -618,10 +650,32 @@ export function MapPage() {
               onToggleFence={toggleFence}
               onFollow={(v) => liveStore.setFollow(v)}
               onTrail={(v) => liveStore.setTrail(v)}
-              onClose={() => liveStore.select(null)}
+              onClose={() => setRailOpen(false)}
               scrubAt={scrubAtIso}
             />
           </aside>
+        )}
+
+        {/* The way back. A closed panel with a live selection is otherwise a dead end: the vehicle
+            is still chosen — halo, trail, Follow — with nothing on screen saying so or offering to
+            show it again. On a wide screen this is a tab on the right edge; below xl the rail is a
+            bottom sheet, so the handle sits along the bottom where the sheet was. */}
+        {selected && !railOpen && (
+          <button
+            type="button"
+            onClick={() => setRailOpen(true)}
+            data-testid="inspector-reopen"
+            aria-label={t('map.inspector.reopen', { name: nameOf(selected.ev.deviceId) })}
+            className={cn(
+              'absolute z-20 flex items-center gap-1.5 border border-line bg-surface text-xs text-text shadow-card transition-colors hover:bg-surface-2',
+              'inset-x-0 bottom-0 justify-center border-x-0 border-b-0 px-3 py-2',
+              'xl:inset-x-auto xl:bottom-auto xl:right-0 xl:top-3 xl:rounded-l-card xl:border-r-0 xl:py-2.5',
+            )}
+          >
+            <ChevronLeft className="hidden h-3.5 w-3.5 shrink-0 xl:block" aria-hidden />
+            <ChevronUp className="h-3.5 w-3.5 shrink-0 xl:hidden" aria-hidden />
+            <span className="max-w-[9rem] truncate font-medium">{nameOf(selected.ev.deviceId)}</span>
+          </button>
         )}
       </div>
 

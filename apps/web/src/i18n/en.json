@@ -696,7 +696,8 @@
         "hood": "Bonnet",
         "open": "Open",
         "closed": "Closed"
-      }
+      },
+      "reopen": "Show {{name}} panel"
     },
     "title": "Live map",
     "toggleList": "Show or hide the fleet list",
