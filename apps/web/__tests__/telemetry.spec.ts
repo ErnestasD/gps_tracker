@@ -293,8 +293,65 @@ describe('display units', () => {
   it('a bitfield reads as bits, not as a decimal nobody can parse', () => {
     // AVL 132 arrived as 36028797018963969. The name is Teltonika's own statement that it is a
     // bitfield; what each BIT means is documented on the adapter pages, not here, so nothing is
-    // decoded — only the base is honest.
-    expect(row('Security State Flags', 1048576)?.value).toBe('0x100000')
+    // decoded — only the base is honest. (132 itself is hidden now at the founder's request; 123
+    // carries the same shape and is still shown.)
+    expect(row('Control State Flags', 1048576)?.value).toBe('0x100000')
     expect(row('Control State Flags', 1048576)?.label).toBe('Control State Flags')
+  })
+})
+
+/**
+ * The wiki's unit cell is EVIDENCE, not instruction (founder's FTC887, 2026-09-08).
+ *
+ * That table declares `GNSS HDOP` in metres, so the metres→kilometres rule rendered "GNSS HDOP (km)
+ * 0.01 km" for a dimensionless ratio. The rule had been checked against the FMC150 table — where
+ * every metre-unit element genuinely is an odometer — and then applied to all 37. And letting the
+ * dictionary win outright re-broke the voltages: FTC887 declares mV with no multiplier, so
+ * "External Voltage 12383 mV" came back, the exact reading the founder called noise on 2026-08-20.
+ */
+describe('units the source gets wrong', () => {
+  const row = (name: string, v: number, units?: string) =>
+    telemetryRows({ [name]: v }, { [name]: { name, ...(units !== undefined ? { units } : {}) } })[0]
+
+  it('a milli- prefix is arithmetic, and always safe to scale', () => {
+    expect(row('External Voltage', 12383, 'mV')?.value).toBe('12.4 V')
+    expect(row('External Voltage', 12383, 'mV')?.label).toBe('External Voltage (V)')
+    expect(row('Battery Voltage', 4002, 'mV')?.value).toBe('4.0 V')
+    expect(row('Battery Current', 250, 'mA')?.value).toBe('0.3 A')
+  })
+
+  it('a dilution-of-precision index has no unit, whatever the cell says', () => {
+    // DOP is satellite geometry, not a distance; the cell claiming metres is a source error
+    expect(row('GNSS HDOP', 1, 'm')?.value).toBe('1')
+    expect(row('GNSS HDOP', 1, 'm')?.label).toBe('GNSS HDOP')
+    expect(row('GNSS PDOP', 2, 'm')?.label).toBe('GNSS PDOP')
+  })
+
+  it('metres become kilometres only where the element is a distance COUNTER', () => {
+    expect(row('Total Mileage', 362852000, 'm')?.value).toBe('362852.00 km')
+    expect(row('Trip Odometer', 15850, 'm')?.value).toBe('15.85 km')
+    // …and stay metres on anything else that happens to carry the cell
+    expect(row('Altitude', 137, 'm')?.value).toBe('137 m')
+    expect(row('Altitude', 137, 'm')?.label).toBe('Altitude (m)')
+  })
+
+  it('minutes become hours only on an hour-meter', () => {
+    expect(row('Engine Total Hours (counted)', 217, 'min')?.value).toBe('3.6 h')
+    expect(row('Idle time', 45, 'min')?.value).toBe('45 min')
+  })
+})
+
+describe('rows the operator asked us to stop showing', () => {
+  it('Security State Flags is hidden, and nothing near it is', () => {
+    // AVL 132's per-bit meanings are documented on the adapter pages, not the data-sending table,
+    // so the row could only ever be a raw pattern (founder, 2026-09-08). The element is still
+    // decoded and stored — this hides a row.
+    const labels = {
+      'Security State Flags': { name: 'Security State Flags' },
+      'Control State Flags': { name: 'Control State Flags' },
+      'Fuel Level': { name: 'Fuel Level', units: 'l' },
+    }
+    const rows = telemetryRows({ 'Security State Flags': 1, 'Control State Flags': 2, 'Fuel Level': 40 }, labels)
+    expect(rows.map((r) => r.label)).toEqual(['Control State Flags', 'Fuel Level (l)'])
   })
 })

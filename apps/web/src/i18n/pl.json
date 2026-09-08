@@ -696,7 +696,8 @@
         "hood": "Maska",
         "open": "Otwarte",
         "closed": "Zamknięte"
-      }
+      },
+      "reopen": "Pokaż panel {{name}}"
     },
     "title": "Mapa na żywo",
     "toggleList": "Pokaż lub ukryj listę pojazdów",

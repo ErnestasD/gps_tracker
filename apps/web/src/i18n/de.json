@@ -696,7 +696,8 @@
         "hood": "Motorhaube",
         "open": "Offen",
         "closed": "Geschlossen"
-      }
+      },
+      "reopen": "{{name}}-Panel anzeigen"
     },
     "title": "Live-Karte",
     "toggleList": "Fahrzeugliste ein- oder ausblenden",
