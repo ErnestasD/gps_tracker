@@ -20,6 +20,25 @@ export const liveEventSchema = z.strictObject({
   fixValid: z.boolean(),
   ignition: z.boolean().nullable(),
   priority: z.union([z.literal(0), z.literal(1), z.literal(2)]),
+  /**
+   * WHERE THE VEHICLE WAS LAST SEEN, carried forward across unplaceable reports.
+   *
+   * A Teltonika in deep sleep keeps reporting on schedule with `satellites: 0`, and I6 rightly
+   * makes that fix invalid — it must never move a trip, a geofence or a trail. But it is also the
+   * only thing the snapshot carries, so a car parked in its own yard vanished from the map
+   * entirely: `GET /v1/devices/last` returned the newest row, that row was unplaceable, and the
+   * map had nothing to draw. The founder's FMC150 reported the correct parked coordinates for
+   * twenty hours while the map showed nothing (2026-09-08).
+   *
+   * The live store has always carried the last good fix forward WITHIN a session; this is the same
+   * fact, in the snapshot, so a page load starts where the session would have been. It changes
+   * nothing about validity: `fixValid` still says the current fix is not one, the status chips
+   * still read "no GPS fix", and every I6 consumer still refuses the record. Absent when the device
+   * has never had a valid fix — a marker at 0/0 is the Gulf of Guinea, not a vehicle.
+   */
+  lastFix: z
+    .object({ lat: z.number(), lon: z.number(), fixTimeMs: z.number() })
+    .optional(),
 })
 
 export type LiveEvent = z.infer<typeof liveEventSchema>
