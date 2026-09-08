@@ -19,6 +19,7 @@
     "vitest": "^3.2.0"
   },
   "dependencies": {
+    "@aws-sdk/client-sesv2": "^3.1127.0",
     "@orbetra/codec": "workspace:*",
     "@orbetra/db": "workspace:*",
     "@orbetra/registry": "workspace:*",

@@ -5,6 +5,8 @@ import {
   SESv2Client,
 } from '@aws-sdk/client-sesv2'
 
+import { dkimStatusOf, type IdentityStatus } from '@orbetra/shared'
+
 /**
  * Creating and reading SES sending identities (ADR-036, audit W-3).
  *
@@ -16,9 +18,6 @@ import {
  * still goes out over SMTP (ADR-023), because SES accepts any `From` on an identity it has verified.
  * That is what makes this one header rather than a second delivery path.
  */
-
-/** What SES says about an identity we asked it to verify. */
-export type IdentityStatus = 'pending' | 'verified' | 'failed'
 
 export interface SesIdentity {
   /** the three DKIM selector tokens; each becomes a `<token>._domainkey.<domain>` CNAME */
@@ -58,25 +57,6 @@ export function sesIdentityConfigFromEnv(env: NodeJS.ProcessEnv = process.env): 
   return { region, accessKeyId, secretAccessKey }
 }
 
-/**
- * SES reports several states; we model three.
- *
- * `TEMPORARY_FAILURE` is deliberately NOT `failed`: SES uses it while it is still retrying the DNS
- * lookup, and showing a tenant "failed" for a record they published correctly two minutes ago sends
- * them to delete and re-add it, which restarts the clock. It reads as still pending, which is what
- * it is.
- */
-function toStatus(dkimStatus: string | undefined): IdentityStatus {
-  switch (dkimStatus) {
-    case 'SUCCESS':
-      return 'verified'
-    case 'FAILED':
-      return 'failed'
-    default:
-      return 'pending'
-  }
-}
-
 export function createSesIdentityGateway(cfg: SesIdentityConfig): SesIdentityGateway {
   const client = new SESv2Client({
     region: cfg.region,
@@ -85,7 +65,7 @@ export function createSesIdentityGateway(cfg: SesIdentityConfig): SesIdentityGat
   const read = async (domain: string): Promise<SesIdentity | null> => {
     try {
       const res = await client.send(new GetEmailIdentityCommand({ EmailIdentity: domain }))
-      return { dkimTokens: res.DkimAttributes?.Tokens ?? [], status: toStatus(res.DkimAttributes?.Status) }
+      return { dkimTokens: res.DkimAttributes?.Tokens ?? [], status: dkimStatusOf(res.DkimAttributes?.Status) }
     } catch (err) {
       // NotFoundException is an ANSWER, not a fault: it means "no identity here", which is exactly
       // what a caller checking a domain they have not registered needs to hear. Anything else is a
@@ -103,7 +83,7 @@ export function createSesIdentityGateway(cfg: SesIdentityConfig): SesIdentityGat
           // (BYODKIM) would mean holding a private key for someone else's domain.
           new CreateEmailIdentityCommand({ EmailIdentity: domain }),
         )
-        return { dkimTokens: res.DkimAttributes?.Tokens ?? [], status: toStatus(res.DkimAttributes?.Status) }
+        return { dkimTokens: res.DkimAttributes?.Tokens ?? [], status: dkimStatusOf(res.DkimAttributes?.Status) }
       } catch (err) {
         // Already registered — by this tenant re-submitting the form, or by another one. Reading it
         // back is right for the first and harmless for the second: the DKIM tokens are public DNS
