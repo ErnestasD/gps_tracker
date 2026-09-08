@@ -454,7 +454,7 @@ function OverviewTab({
     queryKey: ['trips', 'device', ev.deviceId],
     queryFn: () => listTrips({ deviceId: ev.deviceId, limit: 5 }),
   })
-  const highlights = latest !== undefined ? highlightRows(latest.attrs, latest.attrLabels ?? {}) : []
+  const highlights = latest !== undefined ? highlightRows(latest.attrs, latest.attrLabels ?? {}, i18n.resolvedLanguage ?? i18n.language) : []
 
   return (
     <div className="space-y-3" data-testid="overview-tab">
@@ -615,7 +615,7 @@ function ParamsTab({
   loading: boolean
   error: boolean
 }) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const { dt: dtFmt } = useFmt()
   const navigate = useNavigate()
   const [q, setQ] = useState('')
@@ -651,7 +651,7 @@ function ParamsTab({
   const labelOf = (r: TelemetryRow): string => (r.binary === undefined ? r.label : t(`map.inspector.opening.${r.binary.labelKey}`))
   const matches = (label: string, key: string): boolean =>
     term === '' || label.toLowerCase().includes(term) || key.toLowerCase().includes(term)
-  const all = telemetryRows(d.attrs, d.attrLabels ?? {}).filter((r) => matches(labelOf(r), r.key))
+  const all = telemetryRows(d.attrs, d.attrLabels ?? {}, i18n.resolvedLanguage ?? i18n.language).filter((r) => matches(labelOf(r), r.key))
   const vehicleRows = all.filter((r) => r.section === 'vehicle')
   const deviceRows = all.filter((r) => r.section === 'device')
   const promotedShown = promoted.filter((r) => matches(r.label, r.key))
