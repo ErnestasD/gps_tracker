@@ -170,14 +170,18 @@ const NAMED_UNITS: Record<string, (v: number) => string> = {
 /**
  * Elements the operator asked us to stop showing.
  *
- * `Security State Flags` (AVL 132) is an 8-byte bitfield whose per-bit meanings live on the LV-CAN
- * adapter pages, not in the data-sending table, so we can only ever print the raw pattern. The
- * founder called it noise on a screen meant to answer "what is this vehicle doing" (2026-09-08).
- * The element is still DECODED and stored — this hides one row, it does not drop data.
+ * `Security State Flags` (AVL 132) and `Control State Flags` (AVL 123) are bitfields whose per-bit
+ * meanings live on the LV-CAN200 / ALL-CAN300 adapter pages, not in the data-sending table — which
+ * documents them as nothing beyond "Security state flags". So the row could only ever be a raw
+ * pattern, and the founder called it noise on a screen meant to answer "what is this vehicle doing"
+ * (2026-09-08). The elements are still DECODED and stored: this hides rows, it does not drop data.
+ *
+ * If those bit tables are ever parsed, these become readable states like the door bitmask and come
+ * straight back out of this set.
  *
  * Matched on the dictionary name, lower-cased, like every other rule in this file.
  */
-const HIDDEN_NAMES: ReadonlySet<string> = new Set(['security state flags'])
+const HIDDEN_NAMES: ReadonlySet<string> = new Set(['security state flags', 'control state flags'])
 
 const isHidden = (label: AttrLabel | undefined): boolean =>
   label !== undefined && HIDDEN_NAMES.has(label.name.trim().toLowerCase())
