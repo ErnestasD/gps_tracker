@@ -117,7 +117,7 @@ tests:
           - exp_labels: { severity: warning, component: disk, mountpoint: "/" }
             exp_annotations:
               summary: "Disk < 15% free (10%)"
-              description: "Root filesystem below 15% — the positions hypertable grows continuously. Plan retention / capacity."
+              description: "Root filesystem below 15%. FIRST: `docker system df` — a deploy leaves a ~2 GB dangling orbetra-app image each time (`docker image prune -f && docker builder prune -f`; /etc/cron.weekly/orbetra-docker-prune does this weekly). If Docker is clean, THEN look at data growth: positions retention, pgbackrest repo, exports volume."
       - eval_time: 11m
         alertname: DiskCritical
         exp_alerts: []

@@ -377,13 +377,21 @@ groups:
           summary: "{{ $labels.job }} is DOWN"
           description: "Prometheus can't scrape {{ $labels.job }} for 2m — the service is down or unreachable."
 
+      # `keep_firing_for` because this one FLAPPED: the value sat on the threshold for a day and the
+      # founder's inbox got WARNING/RESOLVED/WARNING all afternoon. An hour of hold means a disk
+      # that dips back over the line resolves once, not six times.
       - alert: DiskFillingUp
         expr: node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"} < 0.15
         for: 10m
+        keep_firing_for: 1h
         labels: { severity: warning, component: disk }
         annotations:
           summary: "Disk < 15% free ({{ $value | humanizePercentage }})"
-          description: "Root filesystem below 15% — the positions hypertable grows continuously. Plan retention / capacity."
+          # The old text said "the positions hypertable grows continuously" and sent the first
+          # responder to the database. On 2026-09-08 the database was 93 MB and Docker held 61 GB:
+          # every deploy builds orbetra-app and leaves the previous build untagged (~2 GB each, 55 of
+          # them). Check the cheap thing first, and only then the data.
+          description: "Root filesystem below 15%. FIRST: `docker system df` — a deploy leaves a ~2 GB dangling orbetra-app image each time (`docker image prune -f && docker builder prune -f`; /etc/cron.weekly/orbetra-docker-prune does this weekly). If Docker is clean, THEN look at data growth: positions retention, pgbackrest repo, exports volume."
       - alert: DiskCritical
         expr: node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"} < 0.05
         for: 5m
