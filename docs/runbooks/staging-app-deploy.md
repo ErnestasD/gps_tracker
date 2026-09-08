@@ -63,6 +63,38 @@ ssh -i ~/.ssh/orbetra_staging root@185.80.129.33 '
 '
 ```
 
+## Housekeeping: every deploy leaks ~2 GB
+
+`build app-base` tags the new image `orbetra-app:latest` and leaves the PREVIOUS build untagged.
+Nothing removes it. By 2026-09-08 there were 55 of them — 47 GB of dangling images plus 14 GB of
+build cache on a 97 GB disk — and `DiskFillingUp` mailed the founder all day while the whole
+database was 93 MB. The alert's own description sent the reader to the positions hypertable, which
+was innocent; it says `docker system df` first now.
+
+`/etc/cron.weekly/orbetra-docker-prune` runs this weekly on the box. Run it by hand after a deploy
+if you are near the line:
+
+```sh
+ssh -i ~/.ssh/orbetra_staging root@185.80.129.33 '
+  docker image prune -f        # DANGLING only — never -a: a stopped service still needs its tag
+  docker builder prune -f --filter until=168h
+  df -h /'
+```
+
+## Prometheus rule changes
+
+`infra/prometheus/` is bind-mounted as a directory (same reasoning as Caddy below), so an rsync'd
+rule file is on disk immediately — but Prometheus does not re-read it on its own:
+
+```sh
+ssh -i ~/.ssh/orbetra_staging root@185.80.129.33 '
+  cd /opt/orbetra/app/infra/compose
+  docker compose --env-file /opt/orbetra/.env -f docker-compose.yml -f docker-compose.apps.yml \
+    up -d --force-recreate prometheus
+  # PROVE it took, rather than assuming:
+  curl -s http://127.0.0.1:9090/api/v1/rules | grep -c DiskFillingUp'
+```
+
 ## Caddy config changes
 
 `infra/caddy/` is bind-mounted as a DIRECTORY, deliberately. It used to be the single file
