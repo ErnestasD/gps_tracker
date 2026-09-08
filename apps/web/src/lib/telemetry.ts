@@ -1,5 +1,6 @@
 import { isNullIsland } from '@orbetra/shared'
 
+import { translateAvlName } from './avlNames'
 import { getJson } from './client'
 import { pairedTimes } from './trackWindow'
 
@@ -294,8 +295,11 @@ export const fmtAttrValue = (key: string, v: unknown, label?: AttrLabel): string
  * search the wiki with); only this label is normalised. The unit is appended because the raw name
  * hides it: "Engine Total Hours" is reported in MINUTES.
  */
-function displayName(label: AttrLabel): string {
-  const name = label.name.replace(/\s*\(?counted\)?$/i, ' (counted)')
+function displayName(label: AttrLabel, lang?: string): string {
+  const spelled = label.name.replace(/\s*\(?counted\)?$/i, ' (counted)')
+  // The names are English because the wiki is; `translateAvlName` returns them unchanged for any
+  // pattern it does not know, so an untranslated element degrades to English rather than to a gap.
+  const name = lang === undefined ? spelled : translateAvlName(spelled, lang)
   const unit = displayUnit(label)
   return unit === undefined ? name : `${name} (${unit})`
 }
@@ -303,6 +307,7 @@ function displayName(label: AttrLabel): string {
 export function telemetryRows(
   attrs: Record<string, unknown>,
   labels: Record<string, AttrLabel> = {},
+  lang?: string,
 ): TelemetryRow[] {
   const rows = Object.entries(attrs).flatMap<TelemetryRow>(([key, value]) => {
     const raw = /^io_(\d+)$/.exec(key)
@@ -322,7 +327,7 @@ export function telemetryRows(
     }
     // "Fuel Level (l)" and "Fuel Level (%)" are two rows of the same name — the unit is the
     // whole point of keeping them apart, so it belongs in the label, not only in the value
-    const named = label === undefined ? undefined : displayName(label)
+    const named = label === undefined ? undefined : displayName(label, lang)
     return [
       {
         key,
@@ -393,6 +398,7 @@ const HIGHLIGHT_ORDER = [
 export function highlightRows(
   attrs: Record<string, unknown>,
   labels: Record<string, AttrLabel> = {},
+  lang?: string,
 ): HighlightRow[] {
   /**
    * Candidates are keyed by the element's NAME, which for an id-key comes from the server's
@@ -428,7 +434,7 @@ export function highlightRows(
       }
       out.push({
         key: cand.key,
-        label: cand.label === undefined ? cand.key : displayName(cand.label),
+        label: cand.label === undefined ? cand.key : displayName(cand.label, lang),
         value: fmtAttrValue(cand.key, raw, cand.label),
         pct,
         tone,
