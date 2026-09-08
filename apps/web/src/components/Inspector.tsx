@@ -301,23 +301,33 @@ function Header({
    * as a rendering fault rather than a deliberately small panel. Collapsed is the state in which
    * the identity matters MOST: it is all that is left of the vehicle on screen.
    */
+  /**
+   * `shrink-0 whitespace-nowrap`, and the row that holds them wraps.
+   *
+   * Without it a narrow panel broke the labels through the middle — "No / contact", "No GPS / fix"
+   * on two lines each — while squeezing the vehicle's name to "Pesa_v3 (LDZ2…" beside them
+   * (founder, 2026-09-08). A chip is a word: it moves to the next line whole, or not at all.
+   */
   const badges = (
     <>
-      <Badge variant={status === 'online' ? 'success' : status === 'stale' ? 'warn' : 'default'}>
+      <Badge
+        className="shrink-0 whitespace-nowrap"
+        variant={status === 'online' ? 'success' : status === 'stale' ? 'warn' : 'default'}
+      >
         {t(`status.${status}`)}
       </Badge>
       {/* the CLIENT's verdict, not the row's: for a stored 0/0 the row still says valid, and
           the badge stayed hidden beside a marker the map was refusing to move — "online, valid
           fix", frozen, no reason given */}
-      {!placeableFix(ev) && <Badge variant="warn">{t('info.invalidFix')}</Badge>}
+      {!placeableFix(ev) && <Badge className="shrink-0 whitespace-nowrap" variant="warn">{t('info.invalidFix')}</Badge>}
     </>
   )
 
   if (peek) {
     return (
-      <div className="flex shrink-0 items-center gap-2 border-b border-line px-3 py-2" data-testid="inspector-peek">
+      <div className="flex shrink-0 flex-wrap items-center gap-x-2 gap-y-1 border-b border-line px-3 py-2" data-testid="inspector-peek">
         <StatusDot status={status} />
-        <span className="shrink-0 truncate text-sm font-semibold text-text">{name ?? ev.deviceId}</span>
+        <span className="min-w-0 flex-1 truncate text-sm font-semibold text-text">{name ?? ev.deviceId}</span>
         {badges}
         {sub.length > 0 && (
           <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-muted" data-testid="inspector-sub">
@@ -342,9 +352,9 @@ function Header({
     <div className="shrink-0 border-b border-line p-3">
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
             <StatusDot status={status} />
-            <span className="truncate text-sm font-semibold text-text">{name ?? ev.deviceId}</span>
+            <span className="min-w-0 flex-1 truncate text-sm font-semibold text-text">{name ?? ev.deviceId}</span>
             {badges}
           </div>
           {sub.length > 0 && (

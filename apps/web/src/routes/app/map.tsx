@@ -669,7 +669,9 @@ export function MapPage() {
             className={cn(
               'absolute z-20 flex items-center gap-1.5 border border-line bg-surface text-xs text-text shadow-card transition-colors hover:bg-surface-2',
               'inset-x-0 bottom-0 justify-center border-x-0 border-b-0 px-3 py-2',
-              'xl:inset-x-auto xl:bottom-auto xl:right-0 xl:top-3 xl:rounded-l-card xl:border-r-0 xl:py-2.5',
+              // vertically centred on the edge, NOT top-3: the map's own zoom/locate controls live
+              // in that corner and the tab sat on top of them (founder, 2026-09-08)
+              'xl:inset-x-auto xl:bottom-auto xl:right-0 xl:top-1/2 xl:-translate-y-1/2 xl:rounded-l-card xl:border-r-0 xl:py-2.5',
             )}
           >
             <ChevronLeft className="hidden h-3.5 w-3.5 shrink-0 xl:block" aria-hidden />

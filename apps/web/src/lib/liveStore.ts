@@ -377,8 +377,21 @@ export class LiveStore {
   ingest(ev: LiveEvent): void {
     const current = this.byId.get(ev.deviceId)
     if (current && current.ev.fixTimeMs >= ev.fixTimeMs) return // max-wins
-    // only a VALID fix moves the marker; an invalid one keeps whatever we last knew (see `fix`)
-    const fix = placeable(ev) ? { lon: ev.lon, lat: ev.lat, course: ev.course ?? 0 } : (current?.fix ?? null)
+    /**
+     * Only a VALID fix MOVES the marker; an invalid one keeps whatever we last knew.
+     *
+     * `ev.lastFix` is that same fact from the SNAPSHOT, and it is what a page load needs. A device
+     * asleep in a yard reports on schedule with `satellites: 0` forever, so `current` is undefined
+     * on the first event and the vehicle had no marker at all until it woke up — the founder's car
+     * sat in his own yard, reporting the right coordinates, invisible (2026-09-08).
+     *
+     * Order matters: a placeable fix now, else what this session already knew, else what the
+     * server carried. Never the unplaceable coordinates themselves.
+     */
+    const carried = ev.lastFix === undefined ? null : { lon: ev.lastFix.lon, lat: ev.lastFix.lat, course: 0 }
+    const fix = placeable(ev)
+      ? { lon: ev.lon, lat: ev.lat, course: ev.course ?? 0 }
+      : (current?.fix ?? carried)
     this.byId.set(ev.deviceId, { ev, status: statusOf(this.now() - ev.fixTimeMs), fix })
     if (this.snapshot.trail && ev.deviceId === this.snapshot.selectedId) {
       // `placeable`, NOT ev.fixValid: the marker above already refuses a stored 0/0, but the trail

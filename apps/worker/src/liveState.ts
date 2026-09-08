@@ -89,6 +89,26 @@ export class LiveState {
       deviceId,
     ).then(async ([t]) => [t, await this.redis.hget('device:account', deviceId)] as const)
 
+    /**
+     * The last PLACEABLE position, carried across reports that cannot place the vehicle.
+     *
+     * Read from the stored payload rather than recomputed: this runs per batch on the hot path, and
+     * the previous snapshot already holds the answer. `0/0` is refused for the same reason the map
+     * refuses it — one zero axis is a real place, both together are the Gulf of Guinea (ADR-039).
+     */
+    const placeable = rec.fixValid && !(rec.lat === 0 && rec.lon === 0)
+    const prior = await this.redis.hget(key, 'json')
+    const carried = ((): { lat: number; lon: number; fixTimeMs: number } | undefined => {
+      if (placeable) return { lat: rec.lat, lon: rec.lon, fixTimeMs: incoming }
+      if (prior === null) return undefined
+      try {
+        const p = JSON.parse(prior) as { lastFix?: { lat: number; lon: number; fixTimeMs: number } }
+        return p.lastFix
+      } catch {
+        return undefined // broken JSON in the hash is not worth failing a batch over
+      }
+    })()
+
     const compact = {
       deviceId,
       // accountId travels IN the payload so the WS gateway filters in-memory
@@ -103,6 +123,7 @@ export class LiveState {
       fixValid: rec.fixValid,
       ignition: rec.ignition,
       priority: rec.priority,
+      ...(carried !== undefined ? { lastFix: carried } : {}),
     }
     await this.redis.hset(key, {
       fixTimeMs: String(incoming),

@@ -790,3 +790,50 @@ describe('a coordinate of exactly 0/0 never places a marker', () => {
     expect(coords).not.toContainEqual([0, 0])
   })
 })
+
+/**
+ * A vehicle asleep in a yard (founder's FMC150, 2026-09-08).
+ *
+ * A Teltonika in deep sleep reports on schedule with `satellites: 0`, and I6 rightly makes that
+ * fix invalid — it must never move a trip, a geofence or a trail. But the snapshot carries only the
+ * newest row, so on a page load the store had no placeable fix at all and the car vanished from the
+ * map while reporting its correct parked coordinates for twenty hours. `lastFix` is the last good
+ * position, carried by the server exactly as this store already carried it within a session.
+ */
+describe('a vehicle that can no longer be placed', () => {
+  const asleep = (fixTimeMs: number) => ({
+    deviceId: '1', accountId: 'a', fixTimeMs, lat: 54.7077, lon: 25.3144, speed: 0, course: null,
+    satellites: 0, fixValid: false, ignition: false, priority: 0 as const,
+  })
+
+  const fixOf = (s: ReturnType<typeof makeStore>) => {
+    s.flush()
+    return s.getSnapshot().devices[0]!.fix
+  }
+
+  it('is drawn where it was last seen, from the snapshot alone', () => {
+    const s = makeStore(() => T0)
+    s.ingest({ ...asleep(1_000), lastFix: { lat: 54.5, lon: 25.1, fixTimeMs: 500 } })
+    expect(fixOf(s)).toEqual({ lat: 54.5, lon: 25.1, course: 0 })
+  })
+
+  it('never uses the unplaceable coordinates themselves', () => {
+    const s = makeStore(() => T0)
+    s.ingest(asleep(1_000)) // no lastFix: the device has never had a valid one
+    expect(fixOf(s)).toBeNull()
+  })
+
+  it('what this session already saw beats what the server carried', () => {
+    const s = makeStore(() => T0)
+    s.ingest({ ...asleep(1_000), fixValid: true, satellites: 12, lat: 55, lon: 26, course: 90 })
+    s.ingest({ ...asleep(2_000), lastFix: { lat: 1, lon: 1, fixTimeMs: 100 } })
+    expect(fixOf(s)).toEqual({ lat: 55, lon: 26, course: 90 })
+  })
+
+  it('a real fix still moves it', () => {
+    const s = makeStore(() => T0)
+    s.ingest({ ...asleep(1_000), lastFix: { lat: 54.5, lon: 25.1, fixTimeMs: 500 } })
+    s.ingest({ ...asleep(2_000), fixValid: true, satellites: 9, lat: 56, lon: 27, course: 10 })
+    expect(fixOf(s)).toEqual({ lat: 56, lon: 27, course: 10 })
+  })
+})
