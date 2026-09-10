@@ -370,25 +370,6 @@ export class Session {
     }
 
     if (this.deviceId === null) return // unreachable while STREAMING; narrows the type for persist
-
-    // codec 16: framing + CRC are verified but we cannot decode the records yet. ACKing 0 would make
-    // the device resend the identical packet FOREVER (the count is the acknowledged-record cursor),
-    // so the data never advances and nothing is observable. Park the frame for diagnosis, ACK what
-    // the device claims to have sent, and count it. The UDP listener does the SAME — see udp.ts.
-    if (parsed.rawFallback === true) {
-      const declared = parsed.declaredCount ?? 0
-      await parkUndecodableFrame(this.deps.redis, this.imei, frame.bytes, this.now())
-      this.deps.metrics.unsupportedCodecTotal++
-      // we told the device these records are accepted, so I1 reconciliation must see them too
-      this.deps.metrics.ackedRecordsTotal += declared
-      this.socket.write(this.codec.encodeAck(declared))
-      this.deps.observeAckLatencyMs?.(this.now() - t0)
-      await this.maybeBackpressure()
-      // an FMB6xx sends codec 16 for EVERY frame and can hold one socket for hours — skipping this
-      // would make Codec-12 command delivery (E08-2) silently dead for exactly that hardware
-      await this.drainPending()
-      return
-    }
     // persist to the device's shard stream, THEN ack (rule 4 / I1). The shared helper writes the
     // SAME payload as the UDP listener (udp.ts) and durably records sanity rejects — see persist.ts.
     const persisted = await persistAvlBatch(

@@ -100,7 +100,8 @@ export async function persistAvlBatch(
 
 /**
  * Stream for frames we framed and CRC-verified but cannot DECODE yet. SEPARATE from `rejects` on
- * purpose: an FMB6xx sends codec 16 for EVERY frame, and each entry is a whole frame (up to the
+ * purpose: an FM63XX sends codec 16 for EVERY frame (decoded natively since 2026-09-10, but the
+ * bound predates that and still guards the next such codec), and each entry is a whole frame (up to the
  * framer's 4 KiB cap) versus ~45-100 B for a sanity reject's single record — parking these next to
  * §3.6 sanity rejects would evict that audit trail within minutes and grow the stream ~40×.
  * Sized like `raw:dead`: a bounded operator sample, NOT an archive. Nothing consumes it yet, so a

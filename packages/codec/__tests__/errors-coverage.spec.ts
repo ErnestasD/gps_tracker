@@ -7,7 +7,7 @@ import { FrameError } from '../src/errors.js'
 import { StreamFramer } from '../src/frame.js'
 import { createTeltonikaCodec } from '../src/index.js'
 import { normalizeIoValue, parseFrame } from '../src/parse.js'
-import { walkRecords } from '../src/walk.js'
+import { SHAPE_8, walkRecords } from '../src/walk.js'
 import { buildCodec8Packet, buildCodec8Record } from './helpers.js'
 
 const reCrc = (pkt: Buffer): Buffer => {
@@ -30,7 +30,7 @@ describe('error paths & wrapper internals', () => {
   })
 
   it('walker overrun on truncated record region → FrameError', () => {
-    expect(() => walkRecords(Buffer.alloc(10), false)).toThrow(/overrun/)
+    expect(() => walkRecords(Buffer.alloc(10), SHAPE_8)).toThrow(/overrun/)
   })
 
   it('command frame with unknown type byte → FrameError', () => {
