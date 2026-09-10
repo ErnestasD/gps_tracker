@@ -122,24 +122,43 @@ describe('UDP ingest channel (e2e vs real redis)', () => {
     expect(metrics.udpDatagramsTotal).toBe(1)
   })
 
-  it('codec 16 over UDP: parked + declared count ACKed, exactly like TCP', async () => {
-    // REGRESSION (review high): the codec-16 fix landed on the TCP session only. parseUdpAvl funnels
-    // through the same parser, so a raw-fallback returned an EMPTY avl batch here — persist wrote 0,
-    // the ACK said 0, and the device resent the same datagram forever with nothing parked and no
-    // counter moving. UDP is enabled by default, so the wedge stayed live in every deployment and
-    // was LESS visible than on TCP, because only one transport moved the new metric.
+  it('codec 16 over UDP: DECODED and persisted, exactly like TCP', async () => {
+    // REGRESSION (review high), and the reason this test exists at all: the first codec-16 handling
+    // landed on the TCP session only. parseUdpAvl funnels through the same parser, so UDP returned an
+    // EMPTY batch — persist wrote 0, the ACK said 0, and the device resent the same datagram forever
+    // with no counter moving. UDP is on by default, so that wedge was live everywhere and LESS
+    // visible than on TCP.
+    //
+    // The frame is the wiki's own Codec 16 example (packages/codec/__fixtures__/wiki/codec16.hex.json)
+    // with the preamble, length and CRC stripped, which is exactly what a UDP datagram carries. Until
+    // 2026-09-10 this asserted the frame was PARKED undecoded; it decodes now, so it asserts the
+    // records land on the shard. What must never change is the ACK: the device's cursor moves either
+    // way, because a wedged buffer costs a device its whole history.
+    const AVL_16 = Buffer.from(
+      '10020000016BDBC7833000000000000000000000000000000000000B05040200010000030002000B00270042563A' +
+        '00000000016BDBC7871800000000000000000000000000000000000B05040200010000030002000B00260042563A' +
+        '000002',
+      'hex',
+    )
+    // The wiki example is dated 2019-07-10, and `sanityFailure` rightly refuses a record that old —
+    // which would make this a test of the age policy rather than of Codec 16. Re-stamp both records
+    // (8-byte timestamp at the head of each 46-byte record, the first starting after codec+N1) and
+    // leave every other byte of the vendor's own example alone.
+    const now = Date.now()
+    AVL_16.writeBigUInt64BE(BigInt(now), 2)
+    AVL_16.writeBigUInt64BE(BigInt(now + 1000), 2 + 46)
+
     const metrics = new IngestMetrics()
     const port = await start(metrics)
-    // bare codec-16 AVL data: codec id, NumberOfData1, body, NumberOfData2 (no CRC over UDP)
-    const ack = await sendAndAwaitAck(port, wrap(Buffer.from([0x10, 0x02, 0x00, 0x00, 0x02]), { packetId: 0x1234, avlPacketId: 0x07 }))
+    const ack = await sendAndAwaitAck(port, wrap(AVL_16, { packetId: 0x1234, avlPacketId: 0x07 }))
 
     expect(ack).not.toBeNull()
     expect(ack!.readUInt16BE(2)).toBe(0x1234)
-    expect(ack!.readUInt8(6)).toBe(2) // the DECLARED count, not 0
-    expect(metrics.unsupportedCodecTotal).toBe(1)
+    expect(ack!.readUInt8(6)).toBe(2)
     expect(metrics.ackedRecordsTotal).toBe(2)
-    expect(await redis.xlen(UNSUPPORTED_STREAM)).toBe(1)
-    expect(await redis.xlen(`raw:${SHARD}`)).toBe(0) // nothing decodable to persist
+    expect(metrics.unsupportedCodecTotal).toBe(0) // nothing unsupported about it any more
+    expect(await redis.xlen(UNSUPPORTED_STREAM)).toBe(0)
+    expect(await redis.xlen(`raw:${SHARD}`)).toBe(2) // both records persisted, like any codec 8 frame
   })
 
   it('unknown IMEI: no ACK, and the IMEI is quarantined for the claim flow', async () => {

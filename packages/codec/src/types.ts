@@ -15,6 +15,17 @@ export interface AvlRecord {
   satellites: number
   speed: number
   eventIoId: number
+  /**
+   * Codec 16 only: the configured trigger of the IO parameter that produced this record — On Exit,
+   * On Entrance, On Both, Reserved, Hysteresis, On Change, Eventual, Periodical (0..7).
+   *
+   * Carried, not interpreted. The vendor's entire explanation of the enum is the words "More
+   * information about it you can find here", where "here" is plain text and not a link, on both the
+   * live wiki and the 2020 snapshot; only values 5 and 7 have ever been seen on the wire. It is also
+   * NOT a proxy for "eventual vs periodic" — a frame carrying event id 253 arrives with generation
+   * type 7 (docs/protocols/teltonika-codec16.md §3.4.1).
+   */
+  generationType?: number
   io: Map<number, bigint | Buffer>
   /** Exact wire bytes of this record (rec_hash input, invariant I3). */
   raw: Buffer
@@ -26,10 +37,6 @@ export type ParsedPacket =
       kind: 'avl'
       codec: 8 | 0x8e | 16
       records: AvlRecord[]
-      /** codec 16: framing+CRC verified but records are not decoded yet — park the frame, do not drop it */
-      rawFallback?: boolean
-      /** codec 16: NumberOfData1 the device claims. ACK this, or the device resends forever. */
-      declaredCount?: number
     }
   | { kind: 'cmdResponse'; codec: 12 | 13 | 14; text: string; nack?: boolean }
 

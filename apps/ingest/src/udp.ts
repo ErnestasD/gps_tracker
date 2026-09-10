@@ -157,20 +157,6 @@ export function createIngestUdpServer(
       return
     }
 
-    // codec 16 over UDP: identical treatment to TCP (session.ts) — a raw-fallback parses as an EMPTY
-    // avl batch, so without this branch persistAvlBatch returns 0, we ACK 0, and the device resends
-    // the same datagram forever with nothing parked and no counter moving. UDP is on by default, so
-    // handling only TCP would leave the wedge live in every deployment and make it LESS visible.
-    if (parsed.rawFallback === true) {
-      const declared = parsed.declaredCount ?? 0
-      await parkUndecodableFrame(redis, head.imei, head.avlData, now())
-      metrics.unsupportedCodecTotal++
-      metrics.ackedRecordsTotal += declared
-      send(encodeUdpAck(head.packetId, head.avlPacketId, declared), rinfo)
-      observeAckLatencyMs?.(now() - t0)
-      return
-    }
-
     const shard = Number(BigInt(head.imei) % BigInt(SHARD_COUNT)) // rule 5: imei % 16
     // load-shed: UDP can't be paused, so above the shard-depth threshold we drop WITHOUT persisting
     // or ACKing — bounded memory (I4) at the cost of a device resend.

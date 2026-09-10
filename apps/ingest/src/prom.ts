@@ -36,7 +36,7 @@ export function startIngestProm(metrics: IngestMetrics, port: number): IngestPro
   )
   reflect(
     'ingest_unsupported_codec_total',
-    'frames verified but not decodable yet (codec 16) — parked in `rejects`, ACKed so the device advances',
+    'frames verified but not decodable — parked in `rejects`, ACKed so the device advances. Codec 16 counted\n     here until 2026-09-10; it decodes natively now, so a non-zero rate is a codec we have never seen or a\n     record whose IO we could not read',
     () => metrics.unsupportedCodecTotal,
   )
   reflect('ingest_acked_records_total', 'records ACKed after XADD', () => metrics.ackedRecordsTotal)

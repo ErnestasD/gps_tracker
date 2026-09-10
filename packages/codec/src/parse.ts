@@ -2,7 +2,7 @@ import { ProtocolParser } from 'complete-teltonika-parser'
 
 import { crc16ibm } from './crc16.js'
 import { CrcError, FrameError, UndecodableRecordsError } from './errors.js'
-import { extractNx8e, walkRecords } from './walk.js'
+import { extractIo16, extractNx8e, generationTypeOf, SHAPE_8, SHAPE_8E, SHAPE_16, walkRecords } from './walk.js'
 import type { AvlRecord, Frame, ParsedPacket } from './types.js'
 
 /**
@@ -39,16 +39,12 @@ export function parseFrame(frame: Frame): ParsedPacket {
     case 0x8e:
       return parseAvl(bytes, dataLen, codecId)
     case 0x10:
-      // v1 contract: Codec 16 = raw fallback after CRC/framing verify (PROJECT_PLAN §3.1). We cannot
-      // decode the records yet, but we MUST report how many the device claims to have sent: ACKing 0
-      // makes the device resend the identical packet forever (the protocol treats the count as the
-      // acknowledged-record cursor), so the data never advances and the loop is invisible.
-      // The caller parks the frame and ACKs this count.
-      // Number of Data 1 is bytes[9] and Number of Data 2 the last data byte, identical to codec 8/8E:
-      // https://wiki.teltonika-gps.com/view/Codec#Codec_16 — proven by __fixtures__/wiki/codec16.hex.json.
-      // The count is ACKed to a device, so validate it exactly as parseAvl does rather than trusting a
-      // single byte: a 13-byte frame (framer allows dataLen ≥ 1) would otherwise read a CRC byte.
-      return { kind: 'avl', codec: 16, records: [], rawFallback: true, declaredCount: declaredCount(bytes, dataLen) }
+      // Codec 16 — the FM63XX generation's answer to a 1-byte AVL id running out (ids above 255 are
+      // representable ONLY here). Framing and record count are identical to Codec 8; the record
+      // differs by exactly three bytes: a 2-byte event id, a Generation Type byte, and 2-byte
+      // element ids kept alongside 1-byte counts.
+      // https://wiki.teltonika-gps.com/view/Codec#Codec_16 · docs/protocols/teltonika-codec16.md
+      return parseAvl(bytes, dataLen, codecId)
     case 0x0c:
     case 0x0d:
     case 0x0e:
@@ -58,43 +54,31 @@ export function parseFrame(frame: Frame): ParsedPacket {
   }
 }
 
-/**
- * Number of Data 1, cross-checked against Number of Data 2 (wiki: Codec page, packet structure —
- * https://wiki.teltonika-gps.com/view/Codec). Used for codecs we cannot decode yet: the value is
- * ACKed back to the device as its record cursor, so it must be structurally sound before we trust it.
- */
-function declaredCount(bytes: Buffer, dataLen: number): number {
-  if (dataLen < 3) {
-    throw new FrameError(`codec 0x${bytes[8]!.toString(16)} data field ${dataLen} too short for a record count`, bytes)
-  }
-  const n1 = bytes[9]!
-  const n2 = bytes[8 + dataLen - 1]!
-  if (n1 !== n2) throw new FrameError(`NumberOfData mismatch: ${n1} != ${n2}`, bytes)
-  return n1
-}
 
-function parseAvl(bytes: Buffer, dataLen: number, codecId: 0x08 | 0x8e): ParsedPacket {
+function parseAvl(bytes: Buffer, dataLen: number, codecId: 0x08 | 0x8e | 0x10): ParsedPacket {
   const n1 = bytes[9]!
   const n2 = bytes[8 + dataLen - 1]!
   if (n1 !== n2) {
     throw new FrameError(`NumberOfData mismatch: ${n1} != ${n2}`, bytes)
   }
-  const codec = codecId === 0x08 ? 8 : 0x8e
+  const codec = codecId === 0x08 ? 8 : codecId === 0x8e ? 0x8e : 16
   if (n1 === 0) return { kind: 'avl', codec, records: [] }
 
   const recordsRegion = bytes.subarray(10, 8 + dataLen - 1)
-  const rawSlices = walkRecords(recordsRegion, codecId === 0x8e)
+  const shape = codecId === 0x08 ? SHAPE_8 : codecId === 0x8e ? SHAPE_8E : SHAPE_16
+  const rawSlices = walkRecords(recordsRegion, shape)
   if (rawSlices.length !== n1) {
     throw new FrameError(`walked ${rawSlices.length} records, header says ${n1}`, bytes)
   }
 
-  const ioPerRecord = decodeIoWithLib(bytes, n1)
+  // Codec 16 is ours to read: the wrapped parser (ADR-010) has no notion of it
+  const ioPerRecord = codecId === 0x10 ? rawSlices.map(extractIo16) : decodeIoWithLib(bytes, n1)
 
   const records: AvlRecord[] = rawSlices.map((raw, i) => {
     const tsMs = Number(raw.readBigUInt64BE(0))
     const priority = raw[8]!
     if (priority > 2) throw new FrameError(`priority ${priority} outside 0..2`, bytes)
-    const idSize = codecId === 0x8e ? 2 : 1
+    const idSize = codecId === 0x08 ? 1 : 2 // 8E and 16 both carry a 2-byte event id
     const io = ioPerRecord[i]!
     if (codecId === 0x8e) {
       // NX-group elements: our raw extraction is authoritative (lib returns NaN for these)
@@ -114,6 +98,7 @@ function parseAvl(bytes: Buffer, dataLen: number, codecId: 0x08 | 0x8e): ParsedP
       satellites: raw[21]!,
       speed: raw.readUInt16BE(22),
       eventIoId: idSize === 2 ? raw.readUInt16BE(24) : raw[24]!,
+      ...(codecId === 0x10 ? { generationType: generationTypeOf(raw) } : {}),
       io: io as Map<number, bigint | Buffer>,
       raw: Buffer.from(raw), // detached copy: framer buffers get reused
     }

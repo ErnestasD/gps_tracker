@@ -112,36 +112,54 @@ describe('E01-5 ingest TCP server (e2e vs real simulator)', () => {
     expect(parseFailures[0]?.reason.length).toBeGreaterThan(10)
   }, 30_000)
 
-  it('codec 16: frame is PARKED and the declared count ACKed — never an endless resend loop', async () => {
-    // REGRESSION (audit high): codec 16 returned records:[] and the session ACKed 0. Per the protocol
-    // the count is the acknowledged-record cursor, so the device resent the identical packet forever
-    // while its records were dropped — with no reject row and no counter, i.e. completely invisible.
+  it('codec 16: DECODED and persisted — the FM63XX generation stops being invisible', async () => {
+    // HISTORY, because the shape of this test changed and the reason matters. Codec 16 first returned
+    // records:[] and the session ACKed 0; per the protocol the count is the acknowledged-record
+    // cursor, so the device resent the identical packet forever while its records were dropped — no
+    // reject row, no counter, completely invisible (audit high). The fix then PARKED the frame and
+    // ACKed the declared count, which stopped the wedge but still showed the operator nothing: an
+    // FM63XX (FMB630, FM6300, FM6320) sends Codec 16 for EVERY frame, so that hardware had no map.
+    //
+    // Now it decodes. The never-ACK-0 invariant this test used to carry is not lost — it is proven
+    // where it actually applies, by the repeated-AVL-id test below, which uses a frame we genuinely
+    // cannot decode.
+    //
+    // The frame is the wiki's own Codec 16 example (packages/codec/__fixtures__/wiki/codec16.hex.json),
+    // re-stamped to now because `sanityFailure` rightly refuses a record dated 2019 and this is a test
+    // of the codec, not of the age policy.
     const port = await startIngest()
-    const before = await redis.xlen(UNSUPPORTED_STREAM)
+    const beforeParked = await redis.xlen(UNSUPPORTED_STREAM)
+    const beforeShard = await redis.xlen(`raw:${SHARD}`)
     const sock = connect(port, '127.0.0.1')
     await new Promise((r) => sock.once('connect', r))
-    // IMEI handshake
     const imei = Buffer.from(IMEI, 'ascii')
     sock.write(Buffer.concat([Buffer.from([0x00, imei.length]), imei]))
     await new Promise((r) => sock.once('data', r)) // 0x01 accept
-    // a codec-16 AVL frame: preamble, len, codec 0x10, NumberOfData1 = 3, filler, count, CRC
-    const dataLen = 5
-    const body = Buffer.from([0x10, 0x03, 0x00, 0x00, 0x03])
+
+    const body = Buffer.from(
+      '10020000016BDBC7833000000000000000000000000000000000000B05040200010000030002000B00270042563A' +
+        '00000000016BDBC7871800000000000000000000000000000000000B05040200010000030002000B00260042563A' +
+        '000002',
+      'hex',
+    )
+    const now = Date.now()
+    body.writeBigUInt64BE(BigInt(now), 2) // 8-byte timestamp at the head of record 1
+    body.writeBigUInt64BE(BigInt(now + 1000), 2 + 46) // …and of record 2
+
     const frame = Buffer.concat([
       Buffer.from([0, 0, 0, 0]),
-      (() => { const b = Buffer.alloc(4); b.writeUInt32BE(dataLen); return b })(),
+      (() => { const b = Buffer.alloc(4); b.writeUInt32BE(body.length); return b })(),
       body,
       (() => { const b = Buffer.alloc(4); b.writeUInt32BE(crc16ibm(body)); return b })(),
     ])
     sock.write(frame)
     const ack = await new Promise<Buffer>((r) => sock.once('data', (d: Buffer) => r(d)))
     sock.destroy()
-    expect(ack.readUInt32BE(0)).toBe(3) // the DECLARED count, not 0 — the device advances its buffer
-    // parked on its OWN stream: an FMB6xx sends codec 16 for EVERY frame, so sharing `rejects`
-    // would evict the §3.6 sanity-reject audit trail within minutes
-    expect(await redis.xlen(UNSUPPORTED_STREAM)).toBe(before + 1)
-    expect(await redis.xlen('rejects')).toBe(0)
-    expect(ingest!.metrics.unsupportedCodecTotal).toBe(1)
+
+    expect(ack.readUInt32BE(0)).toBe(2)
+    expect(await redis.xlen(`raw:${SHARD}`)).toBe(beforeShard + 2) // decoded, not parked
+    expect(await redis.xlen(UNSUPPORTED_STREAM)).toBe(beforeParked) // nothing unsupported any more
+    expect(ingest!.metrics.unsupportedCodecTotal).toBe(0)
   }, 30_000)
 
   it('a repeated AVL id: the frame is parked and ACKed, NOT retried forever', async () => {
