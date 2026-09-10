@@ -248,13 +248,61 @@ export function normalize(
 
   const sats = smallintOrNull('satellites', p.satellites) ?? 0
 
+  /**
+   * DEFENCE IN DEPTH, and the first draft of this comment said otherwise — worth recording, because
+   * the wrong version is the kind a reviewer nods at.
+   *
+   * Off-sphere coordinates are ALREADY refused, and have been since the first ingest commit:
+   * `sanityFailure` (apps/ingest/src/persist.ts:27) returns 'coords' for |lat| > 90 or |lon| > 180,
+   * and `persistAvlBatch` — the sole writer of `raw:<shard>`, used by both the TCP session and the
+   * UDP listener — diverts those records to the `rejects` stream. They never reach this function.
+   *
+   * So what is this for? Everything that can put a record on a shard stream WITHOUT passing that
+   * check: a replay or backfill tool, a test harness, and above all the next decoder, written by
+   * someone who reads `parse.ts` and never opens `persist.ts`. It is also the seam that makes the
+   * 005 CHECK constraint safe to add: with this here, a row that would violate the constraint is
+   * stored marked-invalid instead of being rejected by Postgres at write time.
+   *
+   * WHAT IT DOES NOT SOLVE, so nobody assumes it does. Ruptela's Mode-B no-fix record carries
+   * satellites 0xFF and lat = lon = 0x80000000 (-214.7483648) — verified byte-exactly against the
+   * 1023-byte capture in https://github.com/traccar/traccar/issues/5152, where 29 records decode
+   * with those sentinels and CRC-16/KERMIT over the frame checks out (docs/protocols/ruptela.md
+   * carries the full analysis, including how thin the vendor's own wording on it is). Those records will hit
+   * `sanityFailure` first and land in `rejects`, so the vehicle shows nothing on the map AND the
+   * real IO in the same record (device temperature, GSM level, external voltage) is lost with it.
+   * The fix for THAT belongs in the Ruptela decoder: translate the sentinel to lat 0 / lon 0 /
+   * satellites 0 at decode time, exactly as Teltonika encodes its own no-fix, and the existing
+   * pipeline then handles it correctly with no further changes anywhere.
+   *
+   * The row is KEPT rather than dropped — it carries IO an operator may need, and dropping records
+   * is how history goes missing. It is stored at 0/0 and marked invalid, the same seam as ADR-039:
+   * the record exists, it simply does not move state. What the device actually sent stays in
+   * `attrs`, deliberately visible in the parameters tab: an operator reading
+   * "Off sphere lat: -214.7483648" learns what arrived, and a zero that replaced the evidence
+   * teaches nothing.
+   */
+  const onSphere = Number.isFinite(p.lat) && Math.abs(p.lat) <= 90 && Number.isFinite(p.lon) && Math.abs(p.lon) <= 180
+  if (!onSphere) {
+    // This feeds `positions_field_nulled_total`, which fires PositionsDegraded
+    // (infra/prometheus/alerts.yml:156) after 15 minutes. That is deliberate, not an oversight: the
+    // ingest sanity check means a record can only arrive here off-sphere if a producer bypassed it,
+    // and "a producer is writing impossible coordinates" is exactly what someone should be woken for.
+    // A vehicle merely parked with no sky reports 0/0 with satellites 0 and never reaches this branch.
+    onFieldNulled?.('lat')
+    onFieldNulled?.('lon')
+    attrs['offSphereLat'] = p.lat
+    attrs['offSphereLon'] = p.lon
+  }
+  const lat = onSphere ? p.lat : 0
+  const lon = onSphere ? p.lon : 0
+
 
   return {
     deviceId: p.deviceId,
     fixTime: new Date(p.tsMs),
     serverTime: new Date(p.serverTimeMs),
-    lat: p.lat,
-    lon: p.lon,
+    lat,
+    lon,
     altitude: smallintOrNull('altitude', p.altitude),
     // km/h; the protocol field is uint16 (see the smallint note). Bound is the COLUMN's, not a
     // semantic one — a speed we merely disbelieve is real data, and dropping it needs a rule, not
@@ -265,7 +313,10 @@ export function normalize(
     // satellites is smallint and NOT NULL (rule 6 / I5 reads it). An out-of-range count is garbage,
     // so fall to 0 — which marks the fix INVALID, the fail-safe side of I5.
     satellites: sats,
-    fixValid: sats > 0 && !isNullIsland(p.lat, p.lon), // rule 6 / I5 — reads the SAME values the row stores
+    // rule 6 / I5 — reads the SAME values the row stores. `onSphere` is stated rather than left to
+    // the 0/0 substitution above doing it implicitly: a later edit that stops zeroing the columns
+    // must not silently re-open the hole this guard closed.
+    fixValid: onSphere && sats > 0 && !isNullIsland(lat, lon),
     ignition,
     movement,
     odometerM,

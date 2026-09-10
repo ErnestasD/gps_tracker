@@ -58,6 +58,10 @@ describe('E01-3 migrations (prisma deploy + raw SQL runner)', () => {
       // satellites, so §3.4's `fix_valid := satellites > 0` called it a valid fix, and the public
       // share link would have parked a customer's marker in the Gulf of Guinea.
       '004_null_island_fix_valid.sql',
+      // 005 makes "a coordinate is on the sphere" structural: 001 declared lat/lon NOT NULL with no
+      // CHECK, so the table would have accepted Ruptela's Mode-B no-fix sentinel (-214.7483648)
+      // that defeats both `satellites > 0` and the null-island rule.
+      '005_coordinate_range.sql',
     ])
 
     const tables = await q<{ table_name: string }>(
@@ -116,9 +120,55 @@ describe('E01-3 migrations (prisma deploy + raw SQL runner)', () => {
     expect(result.applied).toEqual([])
     expect(result.skipped).toEqual([
       '001_positions.sql', '002_daily_device_stats.sql', '003_positions_server_time_brin.sql',
-      '004_null_island_fix_valid.sql',
+      '004_null_island_fix_valid.sql', '005_coordinate_range.sql',
     ])
   }, 60_000)
+
+  /**
+   * 005 adds a CHECK, and a CHECK that is never exercised is a comment. `NOT VALID` makes that
+   * easy to get wrong in the direction that matters: it skips the scan over history, and a reader
+   * can easily assume it therefore skips enforcement too. It does not — new rows are checked from
+   * the moment it lands, and this proves it on a real hypertable rather than on a promise.
+   */
+  /**
+   * "NOT VALID skips the scan" is the load-bearing claim in 005's header, and reviewers disagreed
+   * about whether TimescaleDB honours it when a constraint propagates to existing chunks. This
+   * settles it with a row rather than an opinion: plant an off-sphere position FIRST, then let 005
+   * land. If Timescale validated on propagation, this fails here instead of at 03:00 on a deploy.
+   */
+  it('005 applies even when history ALREADY holds an off-sphere row (NOT VALID skips the scan)', async () => {
+    await q(`CREATE DATABASE dirty_history`)
+    const url2 = url.replace(/\/orbetra$/, '/dirty_history')
+    const q2 = async <T extends pg.QueryResultRow>(sql: string): Promise<T[]> => {
+      const c = new pg.Client({ connectionString: url2 })
+      await c.connect()
+      try { return (await c.query<T>(sql)).rows } finally { await c.end() }
+    }
+
+    // everything BEFORE 005, copied verbatim so checksums still match if the real dir runs later
+    const partial = mkdtempSync(path.join(tmpdir(), 'orbetra-sql-dirty-'))
+    for (const f of ['001_positions.sql', '002_daily_device_stats.sql', '003_positions_server_time_brin.sql', '004_null_island_fix_valid.sql']) {
+      copyFileSync(path.join(PKG_DIR, 'sql', f), path.join(partial, f))
+    }
+    await migrate(url2, partial)
+
+    // the exact shape 005 is about: Ruptela Mode-B, stored before anyone thought to refuse it
+    await q2(`INSERT INTO positions (device_id, fix_time, lat, lon, satellites, fix_valid, rec_hash)
+              VALUES (1, now() - interval '1 hour', -214.7483648, -214.7483648, 255, true, 7)`)
+
+    const applied = await migrate(url2)
+    expect(applied.applied).toContain('005_coordinate_range.sql')
+
+    // the dirty row survives, unrepaired and readable — 005 repairs nothing on purpose
+    const rows = await q2<{ lat: number }>(`SELECT lat FROM positions WHERE device_id = 1`)
+    expect(rows[0]?.lat).toBeCloseTo(-214.7483648, 6)
+
+    // …and the constraint is nonetheless live for NEW rows on that same dirty database
+    await expect(
+      q2(`INSERT INTO positions (device_id, fix_time, lat, lon, satellites, fix_valid, rec_hash)
+          VALUES (2, now(), 0, 180.5, 11, true, 8)`),
+    ).rejects.toThrow(/positions_coords_on_sphere/)
+  }, 240_000)
 
   it('refuses to run when an applied file was edited (append-only, rule 11)', async () => {
     await q(`CREATE DATABASE checksum_test`)
