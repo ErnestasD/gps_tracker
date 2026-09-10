@@ -1,8 +1,11 @@
-import { isNullIsland } from '@orbetra/shared'
+import { isNullIsland, type AttrLabel } from '@orbetra/shared'
 
 import { translateAvlName } from './avlNames'
 import { getJson } from './client'
 import { pairedTimes } from './trackWindow'
+
+// re-exported: this file is where the browser reads labels, and @orbetra/shared is where they are defined
+export type { AttrLabel }
 
 /**
  * What the device is actually reporting, and its last 24 hours.
@@ -36,19 +39,6 @@ export interface LatestTelemetry {
    * id map would be a guess about the vehicle. Absent against an API older than this deploy.
    */
   attrLabels?: Record<string, AttrLabel>
-}
-
-/** A dictionary entry as the telemetry endpoint sends it. */
-export interface AttrLabel {
-  name: string
-  units?: string
-  /** Already a number: the server parses the wiki's cell (two decimal conventions, 29% non-numeric)
-   *  in ONE place and omits the field rather than sending something the browser must guess at. */
-  multiplier?: number
-  /** The wiki's "Parameter Group" cell verbatim, e.g. "CAN Chip", "Permanent I/O elements". */
-  group?: string
-  /** The wiki's "Max" cell verbatim — identifies a documented bitmask; see `DOOR_BITMASK_MAX`. */
-  max?: string
 }
 
 /**
@@ -210,13 +200,33 @@ const isDistanceCounter = (label: AttrLabel): boolean =>
   /\b(mileage|odometer|distance|trip\s+distance)\b/i.test(label.name)
 
 /**
+ * The unit of the number this file is about to format — which is the unit of `raw × multiplier`,
+ * not the unit of the wire value.
+ *
+ * These are different questions and the Units cell only answers the first on SOME rows. Teltonika's
+ * Multiplier column means two opposite things: id 10879 is `raw × 50` millivolts, so the cell
+ * describes the result; id 67 is `raw × 0.001` volts, so the cell describes the raw value and
+ * nothing describes the result. This file used to scale by the cell in both cases, which divided the
+ * second kind by a thousand twice — a healthy 12.6 V backup battery rendered `0.0 V`, the exact
+ * reading of dead hardware, beside a health chart showing 12.6 V from the same number.
+ *
+ * The server decides it per element with a citation (tools/avl-dict/src/corrections.ts) and sends
+ * `unitAfterMultiplier` only where it differs. `null` is its refusal: the sources do not settle the
+ * row, so nothing may be claimed and the value is shown with no unit rather than a wrong one.
+ */
+export function effectiveUnit(label: AttrLabel): string | null | undefined {
+  return label.unitAfterMultiplier === undefined ? label.units : label.unitAfterMultiplier
+}
+
+/**
  * How a stored value becomes a readable one: the factor, the digits, and the unit BOTH sides show.
  *
- * Two rules, and the difference between them is the whole lesson. A milli- prefix is arithmetic —
- * mV is a thousandth of a volt on every table in the world, so scaling it needs no knowledge of the
- * element. Metres and minutes are CLAIMS about what the element measures, so they are gated on the
- * name: an odometer's metres are kilometres, an hour-meter's minutes are hours, and a DOP index's
- * "metres" are a mistake in the source.
+ * Two rules, and the difference between them is the whole lesson. A milli- prefix is arithmetic ONCE
+ * THE UNIT IS THE RIGHT ONE — a millivolt is a thousandth of a volt on every table in the world, but
+ * knowing that the number in hand is millivolts takes knowledge of the element, which is what
+ * `effectiveUnit` carries. Metres and minutes are CLAIMS about what the element measures, so they
+ * are gated on the name: an odometer's metres are kilometres, an hour-meter's minutes are hours, and
+ * a DOP index's "metres" are a mistake in the source.
  *
  * Returning one object for both the label and the value is what keeps "Total Mileage (m)" from ever
  * again sitting beside "362852.00 km".
@@ -228,9 +238,9 @@ interface Scale {
 }
 
 function scaleFor(label: AttrLabel): Scale | null {
-  const u = label.units
-  if (u === undefined) return null
-  // SI prefixes: pure arithmetic, safe on any element. The founder reported "12787" where an
+  const u = effectiveUnit(label)
+  if (u === undefined || u === null) return null
+  // SI prefixes: pure arithmetic on the POST-multiplier unit. The founder reported "12787" where an
   // operator reads volts on 2026-08-20; making the dictionary win reintroduced it for every table
   // that declares mV, which is most of them.
   if (u === 'mV') return { unit: 'V', factor: 1 / 1000, digits: 1 }
@@ -246,7 +256,9 @@ function scaleFor(label: AttrLabel): Scale | null {
 function displayUnit(label: AttrLabel): string | undefined {
   if (isFlags(label)) return undefined
   if (isDop(label)) return undefined // a ratio has no unit, whatever the cell says
-  return scaleFor(label)?.unit ?? label.units
+  const u = effectiveUnit(label)
+  if (u === null) return undefined // refused upstream: a bare number beats a confidently wrong unit
+  return scaleFor(label)?.unit ?? u
 }
 
 /** Value formatter that knows the element's unit when the NAME is a documented one. */
@@ -421,17 +433,27 @@ export function highlightRows(
     for (const cand of candidates.filter((c) => c.name === wanted)) {
       const raw = attrs[cand.key]
       const scale = SCALES[wanted]
-      const units = cand.label?.units
+      const units = cand.label === undefined ? undefined : effectiveUnit(cand.label)
       let pct: number | null = null
       let tone: HighlightRow['tone'] = 'accent'
       /**
        * A bar needs a maximum, and only a percentage has one we did not invent. Litres do not:
        * this code cannot know the tank's size, and a bar drawn against 100 would say a full 18 l
        * tank is 18 % — a claim about the vehicle. Those rows show the value alone.
+       *
+       * `null` is NOT `undefined` here, and flattening the two would draw the bar on precisely the
+       * rows that deserve it least: `undefined` means the source names no unit, while `null` is the
+       * server REFUSING to name one because its sources disagree. Reading the second as "unitless,
+       * so it must be a proportion of 100" invents exactly the maximum this comment forbids.
        */
-      const scalable = scale !== undefined && (units === undefined || units === '%')
-      if (scalable && typeof raw === 'number' && raw >= 0 && raw <= scale.max) {
-        pct = raw / scale.max
+      const scalable = scale !== undefined && units !== null && (units === undefined || units === '%')
+      // the bar and the number must be the SAME reading: `value` shows `raw × multiplier`, so a bar
+      // drawn from the bare wire value would disagree with the figure printed beside it. No shipped
+      // row is both bar-scaled and multiplied today (the three scales are GSM 1–5 and two percent
+      // elements, none of which carries one), which is exactly why it is worth pinning down now.
+      const shown = typeof raw === 'number' ? raw * (cand.label?.multiplier ?? 1) : null
+      if (scalable && shown !== null && shown >= 0 && shown <= scale.max) {
+        pct = shown / scale.max
         // a low signal or an empty tank is the thing worth noticing; the tone says so without
         // needing a second row of text
         if (scale.lowIsBad) tone = pct <= 0.15 ? 'danger' : pct <= 0.35 ? 'warn' : 'accent'

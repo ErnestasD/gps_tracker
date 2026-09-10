@@ -81,21 +81,26 @@ describe('AVL dictionaries (wiki-generated, PROJECT_PLAN §3.7)', () => {
     // generator has its own shrink guard, but that only fires when someone regenerates; this
     // protects the FILES, which a hand-edit or a bad merge can also mangle.
     //
-    // Floors are 90% of the count at capture (2026-08-12), so ordinary wiki churn never touches
-    // them and only a collapse does. Lowering one is a deliberate act that belongs in a diff: check
-    // the wiki page actually lost those rows before you do it.
+    // Floors are 90% of the count at capture, so ordinary wiki churn never touches them and only a
+    // collapse does. Lowering one is a deliberate act that belongs in a diff: check the wiki page
+    // actually lost those rows before you do it.
+    //
+    // RE-CAPTURED 2026-09-10, and this is why a floor must be re-cut whenever the files are: 28 of
+    // the 36 were still 90% of an OLDER, smaller capture, and a floor that trails its table stops
+    // being a guard. `ftm927` grew 76 → 201 in the 2026-09-03 regeneration while its floor stayed at
+    // 68, so the test would have waved through a 66% truncation — the exact failure it exists to
+    // catch. Nothing shrank at this capture: every one of the 28 moved UP.
+    //
+    // 2026-09-03 history, kept because it explains three of the names: Teltonika's pages regrouped
+    // and `atc774` stopped being a table of its own — ATC774 now matches atc700's content, while
+    // FTC880/FTC881/FTM880 split off into `ftc880` and FTC921/FTC965 out of their old families.
+    // Verified against the pages before accepting the remap: each parses fully, none is a truncation.
     const FLOOR: Record<string, number> = {
-      fmc650: 1077, fmm650: 844, fmc640: 842, fmb640: 801, fmb641: 682, fmb120: 576, fmb930: 499, tft100: 492,
-      fmc150: 379, fmb150: 378, fmm150: 378, fmb001: 313, fmc250: 309, tst100: 265, ftc305: 244, fm6300: 238,
-      gh5200: 231, tat100: 216, fmc880: 214, fmm880: 213, ftc308: 191, ftc164: 189, fmb010: 187, ftc134: 186,
-      fmm80a: 185, ftc927: 176, ftc924: 173, ftc887: 171, fm36: 123, ftc920: 72, atc704: 69, ftm927: 68,
-      atc700: 36,
-      // 2026-09-03: Teltonika's pages regrouped and `atc774` stopped being a table of its own —
-      // ATC774 now matches atc700's content, while FTC880/FTC881/FTM880 split off into `ftc880`
-      // and FTC921/FTC965 out of their old families. Verified against the pages before accepting
-      // the remap: each parses fully (40/75/81/193 elements), none is a truncation. The three new
-      // floors are 90% of the count at that capture, like every other entry here.
-      ftc880: 67, ftc921: 72, ftc965: 173,
+      fmm650: 1118, fmc650: 1111, fmb641: 950, fmc640: 866, fmb640: 801, fmb120: 622, tft100: 504, fmb930: 499,
+      fmb150: 412, fmc150: 412, fmm150: 412, fmb001: 313, fmc250: 310, fmb010: 270, tst100: 265, ftc305: 247,
+      gh5200: 243, fm6300: 238, fmc880: 228, fmm880: 228, tat100: 216, fmm80a: 199, ftc164: 195, ftc308: 194,
+      ftc134: 190, ftc927: 181, ftm927: 180, ftc924: 177, ftc965: 175, ftc887: 174, atc704: 135, fm36: 123,
+      ftc920: 76, ftc921: 74, ftc880: 69, atc700: 36,
     }
     // …and the map must COVER the catalogue. Without this a new table added with a truncated parse
     // gets no floor at all and the loop above waves it through — which is exactly the case the
@@ -435,5 +440,106 @@ describe('applySign refuses what it cannot honestly reinterpret', () => {
     expect(Object.isFrozen(e)).toBe(true)
     expect(() => { (e as { name: string }).name = 'PWNED' }).toThrow()
     expect(loadDictionary('fmb120').get(21)?.name).toBe('GSM Signal')
+  })
+})
+
+/**
+ * The Multiplier column means two opposite things, and the shipped files have to say which.
+ *
+ * `raw × multiplier` lands IN the Units cell on some rows (id 10879 is `raw × 50` millivolts) and
+ * AWAY from it on others (id 67 is `raw × 0.001` volts). A reader that scales by the SI prefix in
+ * `units` divides the second kind twice, and a healthy 12.6 V backup battery renders `0.0 V` — the
+ * exact reading of dead hardware. The generator makes a human decide every row where the two could
+ * differ (tools/avl-dict/src/corrections.ts, with a citation each); these tests assert the ARTIFACT
+ * of that, so a dictionary regenerated from a stale checkout or edited by hand cannot ship silent.
+ */
+describe('unitAfterMultiplier: which unit the arithmetic lands in', () => {
+  /** the units a reader would rescale on the SI prefix alone */
+  const SI_PREFIXED = new Set(['mV', 'mA', 'mm', 'ml', 'mG', 'mg'])
+  /** `× 1` is a no-op, so the cell describes raw and result alike; anything unreadable is NOT safe */
+  const scales = (m: string | undefined): boolean => {
+    if (m === undefined) return false
+    const n = Number(m.replace(',', '.'))
+    return !(Number.isFinite(n) && n === 1)
+  }
+
+  it('reads a real corpus — an empty one would make both sweeps below pass vacuously', () => {
+    // with `avlTables()` returning [], the two loops below iterate nothing and report success. The
+    // only thing anchoring them was the exact-count test further down, which is also the most
+    // churn-prone assertion in the file.
+    expect(avlTables().length).toBeGreaterThan(30)
+    expect(loadDictionary('fmb120').size).toBeGreaterThan(600)
+  })
+
+  it('EVERY ambiguous row in EVERY shipped table has been decided', () => {
+    const undecided: string[] = []
+    for (const table of avlTables()) {
+      for (const [id, e] of loadDictionary(table)) {
+        if (e.units === undefined || !SI_PREFIXED.has(e.units) || !scales(e.multiplier)) continue
+        if (e.unitAfterMultiplier === undefined) undecided.push(`${table}:${id} ${e.name} (${e.units} × ${e.multiplier})`)
+      }
+    }
+    expect(undecided).toEqual([])
+  })
+
+  it('…and NOTHING ELSE carries the field — absent means "the cell is already it"', () => {
+    // Writing it on all 13,847 rows would be ~5,200 copies of the Units cell: unreviewable in a diff,
+    // and it would destroy the meaning of an absent field. It appears where the answer is not
+    // derivable from `units` alone — the ambiguous rows, plus any row whose landing differs.
+    const gratuitous: string[] = []
+    for (const table of avlTables()) {
+      for (const [id, e] of loadDictionary(table)) {
+        if (e.unitAfterMultiplier === undefined) continue
+        const ambiguous = e.units !== undefined && SI_PREFIXED.has(e.units) && scales(e.multiplier)
+        if (!ambiguous && e.unitAfterMultiplier === e.units) gratuitous.push(`${table}:${id}`)
+      }
+    }
+    expect(gratuitous).toEqual([])
+  })
+
+  it('id 67 Battery Voltage: the same silicon, two pages, one reading', () => {
+    // fmc650 is Teltonika's own corrected row; the others transclude a stale template that says mV
+    expect(loadDictionary('fmc650').get(67)?.units).toBe('V')
+    expect(loadDictionary('fmc650').get(67)?.unitAfterMultiplier).toBeUndefined()
+    for (const table of ['fm6300', 'fmb640', 'fmb641', 'fmc640', 'fmm650']) {
+      const e = loadDictionary(table).get(67)
+      expect(e?.units, table).toBe('mV') // provenance is untouched: this IS what the wiki says
+      expect(e?.unitAfterMultiplier, table).toBe('V') // …and this is what the number means
+      expect(e?.multiplier?.replace(',', '.'), table).toBe('0.001')
+    }
+  })
+
+  it('exactly the reported rows are CORRECTED, the rest are CONFIRMED, and each cites a source', () => {
+    const changed: string[] = []
+    const confirmed: string[] = []
+    for (const table of avlTables()) {
+      for (const [id, e] of loadDictionary(table)) {
+        if (e.unitAfterMultiplier === undefined) continue
+        ;(e.unitAfterMultiplier === e.units ? confirmed : changed).push(`${table}:${id}`)
+        // rule 8 travels with the artifact: a bare wiki URL, and the name of the decision that used it
+        expect(e.unitSource, `${table}:${id}`).toMatch(/^https:\/\/wiki\.teltonika-gps\.com\/view\/\S+$/)
+        expect(e.unitRule, `${table}:${id}`).toMatch(/^[A-Z][A-Z_]+$/)
+      }
+    }
+    // corrected: ids 6/9 on the six pages that write mV, 67 on the five that do, 66 on fm6300 alone
+    expect(changed).toHaveLength(18)
+    expect(new Set(changed.map((c) => c.split(':')[1]))).toEqual(new Set(['6', '9', '66', '67']))
+    // confirmed: the EV pack rows (×50 mV is how a 400 V pack reports) and the UL202 fuel levels
+    expect(confirmed).toHaveLength(39)
+    expect(new Set(confirmed.map((c) => c.split(':')[1]))).toEqual(
+      new Set(['224', '225', '327', '10879', '10880', '10886', '10887']),
+    )
+  })
+
+  it('a correction never leaks onto the ID it collides with on another family', () => {
+    // 327 is an ultrasonic fuel level on the FMB1XX tables and a GEOFENCE ZONE on the FMX6XX ones.
+    // Keying corrections on the id alone would have given a geofence flag a unit in millimetres.
+    expect(loadDictionary('fmb120').get(327)?.name).toBe('UL202-02 Sensor Fuel level')
+    expect(loadDictionary('fmb120').get(327)?.units).toBe('mm')
+    // the sensor's own panel reads to one decimal in mm ("displayed 285.2mm"), so × 0.1 IS the mm
+    expect(loadDictionary('fmb120').get(327)?.unitAfterMultiplier).toBe('mm')
+    expect(loadDictionary('fmc650').get(327)?.name).toBe('Geofence zone 21')
+    expect(loadDictionary('fmc650').get(327)?.units).toBeUndefined()
+    expect(loadDictionary('fmc650').get(327)?.unitAfterMultiplier).toBeUndefined()
   })
 })

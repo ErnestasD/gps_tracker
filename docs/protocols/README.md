@@ -1,6 +1,6 @@
 # Protocol research
 
-Five documents, ~12,200 lines, produced 2026-09-09/10 before a single line of a new decoder was
+Six documents, ~12,200 lines, produced 2026-09-09/10 before a single line of a new decoder was
 written. They exist because hard rule 8 requires a citation for every byte offset and AVL id we act
 on, and because the cheapest place to learn a protocol's traps is from the people who already hit
 them.
@@ -11,7 +11,8 @@ them.
 | `queclink.md` | Queclink @Track (ASCII + HEX) | 46 | 69 | 38 | ASCII yes if model-gated with no fallback; HEX no |
 | `gt06.md` | GT06 / Concox-Jimi, 55 packet types | 44 | 51 | 31 | not without resolving the four width axes |
 | `teltonika-codec16.md` | Codec 16 (0x10), the codec FMB6xx speaks | 34 | 16 | 19 | record layout yes; AVL dictionary no |
-| `teltonika-audit.md` | our OWN Teltonika support, audited against the published surface | 49 holes | — | — | n/a — it is the hole list |
+| `teltonika-audit.md` | our OWN Teltonika support, audited against the published surface | 49 holes (1 closed) | — | — | n/a — it is the hole list |
+| `multiplier-units.md` | why the wiki's Multiplier cell means two opposite things, and which rows we decided | 11 elements / 57 rows | — | — | classes A+B fixed; C, D, E recorded, not fixed |
 
 ## How to read them
 

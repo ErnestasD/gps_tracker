@@ -33,6 +33,30 @@ export interface AvlDictionaryEntry {
   max?: string
   multiplier?: string
   units?: string
+  /**
+   * DERIVED by tools/avl-dict: the unit of `raw × multiplier`, which is NOT always `units`.
+   *
+   * Teltonika's Multiplier column means two opposite things depending on the row — on id 10879 the
+   * Units cell describes the RESULT (`raw × 50` millivolts), on id 67 it describes the RAW wire
+   * value (`raw × 0.001` volts). A reader that scales by the SI prefix in `units` divides the second
+   * kind twice: a healthy 12.6 V battery renders `0.0 V`. Nothing in the data separates the two, so
+   * a human decides each one with a citation in tools/avl-dict/src/corrections.ts.
+   *
+   * absent → `units` is already the post-multiplier unit (read `unitAfterMultiplier ?? units`);
+   * string → it is not, and this is; `null` → REFUSED, claim no unit and show the number bare.
+   */
+  unitAfterMultiplier?: string | null
+  /**
+   * The wiki page that settled `unitAfterMultiplier` (CLAUDE.md rule 8 travels with the artifact),
+   * and the name of the decision in tools/avl-dict/src/corrections.ts that made it.
+   *
+   * The ARGUMENT deliberately stays in that source file rather than being copied into every row that
+   * shares it: 57 copies of four paragraphs was 24 KB of prose here, fourteen times the size of the
+   * field it explained, and it embedded internal repository paths in a file that ships inside a
+   * white-label product. Neither field is ever sent to a browser.
+   */
+  unitSource?: string
+  unitRule?: string
   /** which models can actually produce this element, and which hardware it needs */
   hwSupport?: string
   group?: string
@@ -139,10 +163,12 @@ export function applySign(entry: AvlDictionaryEntry | undefined, value: bigint):
  * The wiki's Multiplier cell as a NUMBER, or null when it is not one. The single place that
  * conversion happens (parse.ts has warned for months that it must be exactly one place).
  *
- * The cell is written in two decimal conventions, sometimes inside one file — `0.1` ×468 next to
- * `0,1` ×215 — and 393 of 1335 cells are not a number at all: `0.01*` ×56, `acc and braking: 0.01`
- * ×17. A bare `Number()` returns NaN for 29% of them, and a NaN that reaches a formatter silently
- * drops the scaling on a customer-visible number: 490 stays "490" where it means 49.0 °C.
+ * The cell is written in two decimal conventions, sometimes inside one file — `0.1` ×541 next to
+ * `0,1` ×217 — and 129 of the 1,533 cells are not a number at all: `0.01*` ×56, `0.1*` ×56,
+ * `acc and braking: 0.01` ×17. A bare `Number()` therefore returns NaN for 397 of them — 25.9%,
+ * the 129 plus 268 comma decimals — and a NaN that reaches a formatter silently drops the scaling
+ * on a customer-visible number: 490 stays "490" where it means 49.0 °C.
+ * (Counted 2026-09-10 over the shipped corpus; the previous figures, 393 of 1335, were both wrong.)
  *
  * Comma is accepted because it is the same number written the other way. Everything else is
  * REFUSED rather than salvaged — `0.01*` carries a footnote this code cannot read, and guessing

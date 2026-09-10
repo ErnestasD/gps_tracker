@@ -1,6 +1,16 @@
 import { describe, expect, it } from 'vitest'
 
-import { drawable, hasTelemetry, highlightRows, placeAt, pointAt, telemetryRows, trackTimes, type TrackPoint } from '../src/lib/telemetry'
+import {
+  drawable,
+  hasTelemetry,
+  highlightRows,
+  placeAt,
+  pointAt,
+  telemetryRows,
+  trackTimes,
+  type AttrLabel,
+  type TrackPoint,
+} from '../src/lib/telemetry'
 
 /**
  * The parameters list and the 24-hour track.
@@ -113,6 +123,16 @@ describe('highlightRows', () => {
     const rows = highlightRows({ 'GSM Signal': 5, 'Battery Level': 50, 'External Voltage': 12004 })
     const by = Object.fromEntries(rows.map((r) => [r.key, r.pct]))
     expect(by).toEqual({ 'GSM Signal': 1, 'Battery Level': 0.5, 'External Voltage': null })
+  })
+
+  it('a REFUSED unit gets no bar — "we cannot name a unit" is not "it must be a percentage"', () => {
+    // `unitAfterMultiplier: null` is the server declining to say what the number is measured in.
+    // Reading that as "unitless, therefore a proportion of 100" would draw a bar saying a 4.2 litre
+    // reading is 42 % full — precisely the invented maximum the unit gate exists to prevent.
+    const labels = { 'Fuel Level': { name: 'Fuel Level', units: 'l', multiplier: 0.1, unitAfterMultiplier: null } }
+    expect(highlightRows({ 'Fuel Level': 42 }, labels)[0]).toMatchObject({ value: '4.2', pct: null })
+    // …while a genuinely unitless row still gets one, so the fix did not just disable the feature
+    expect(highlightRows({ 'Fuel Level': 42 }, { 'Fuel Level': { name: 'Fuel Level' } })[0]?.pct).toBe(0.42)
   })
 
   it('a value outside the documented range gets no bar rather than a clamped lie', () => {
@@ -358,5 +378,55 @@ describe('rows the operator asked us to stop showing', () => {
       labels,
     )
     expect(rows.map((r) => r.label)).toEqual(['Control State Flags Extended', 'Fuel Level (l)'])
+  })
+})
+
+/**
+ * The Multiplier column means two opposite things, and scaling by the Units cell divided one of them
+ * TWICE.
+ *
+ * On id 10879 the cell describes the RESULT — `raw × 50` millivolts is how a 400 V traction pack
+ * reports — so the mV→V rescale above is right. On id 67 it describes the RAW WIRE VALUE: `raw ×
+ * 0.001` is already volts, and rescaling it again turned a healthy 12.6 V backup battery into
+ * `0.0 V`, the exact reading of dead hardware, beside a health chart showing 12.6 V from the same
+ * number. Nothing in the data separates the two shapes, so the server decides each row with a
+ * citation (tools/avl-dict/src/corrections.ts) and sends `unitAfterMultiplier`.
+ */
+describe('the unit the arithmetic LANDS in, not the unit on the wire', () => {
+  const row = (name: string, v: number, label: Omit<AttrLabel, 'name'>) =>
+    telemetryRows({ [name]: v }, { [name]: { name, ...label } })[0]
+
+  it('THE BUG: a cell naming the RAW unit, scaled by its own prefix, reads as dead hardware', () => {
+    // this is the shape without the server's answer — an API older than this deploy sends no field,
+    // and the pair is only whole once both sides ship. Kept as the thing being fixed.
+    expect(row('Battery Voltage', 12600, { units: 'mV', multiplier: 0.001 })?.value).toBe('0.0 V')
+  })
+
+  it('…and reads as a battery once the server says where × 0.001 lands', () => {
+    const label = { units: 'mV', multiplier: 0.001, unitAfterMultiplier: 'V' }
+    expect(row('Battery Voltage', 12600, label)?.value).toBe('12.6 V')
+    expect(row('Battery Voltage', 12600, label)?.label).toBe('Battery Voltage (V)')
+    expect(row('Analog Input 1', 4820, label)?.value).toBe('4.8 V') // 0–10 V input, not 4.8 mV
+  })
+
+  it('a cell that DOES describe the result keeps its rescale — 8000 is a 400 V pack', () => {
+    const label = { units: 'mV', multiplier: 50, unitAfterMultiplier: 'mV' }
+    expect(row('High voltage battery voltage', 8000, label)?.value).toBe('400.0 V')
+    expect(row('EVSE1 AC RMS Current', 320, { units: 'mA', multiplier: 50, unitAfterMultiplier: 'mA' })?.value).toBe('16.0 A')
+  })
+
+  it('a unit this reader does not rescale is still the POST-multiplier one', () => {
+    // the UL202 panel displays the level to one decimal in millimetres ("displayed 285.2mm"), so
+    // 2852 on the wire is 285.2 mm — no rescale rule for mm exists, and the label must still be true
+    const r = row('UL202-02 Sensor Fuel level', 2852, { units: 'mm', multiplier: 0.1, unitAfterMultiplier: 'mm' })
+    expect(r?.value).toBe('285.2 mm')
+    expect(r?.label).toBe('UL202-02 Sensor Fuel level (mm)')
+  })
+
+  it('a REFUSAL shows the number bare — a wrong unit is worse than none', () => {
+    // `null` is the server declining to name a unit for a row its sources do not settle
+    const r = row('Mystery Element', 1234, { units: 'mV', multiplier: 0.01, unitAfterMultiplier: null })
+    expect(r?.value).toBe('12.3')
+    expect(r?.label).toBe('Mystery Element')
   })
 })

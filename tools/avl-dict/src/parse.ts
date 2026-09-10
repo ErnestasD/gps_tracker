@@ -19,9 +19,9 @@ export interface AvlEntry {
   /**
    * The wiki's Multiplier cell, VERBATIM AND DISPLAY-ONLY — never `Number()` this without handling
    * what is actually in it. Across the corpus it is written in two decimal conventions, sometimes
-   * within one file (`0.1` ×468 and `0,1` ×215, `0.001` and `0,001`), and 129 rows are not a number
+   * within one file (`0.1` ×541 and `0,1` ×217, `0.001` and `0,001`), and 129 rows are not a number
    * at all: `0.01*` ×56, `0.1*` ×56, `acc and braking: 0.01` ×17. `Number()` therefore returns NaN
-   * for 393 of the 1335 multiplier cells — 29% — which silently drops the scaling on a
+   * for 397 of the 1,533 multiplier cells — 25.9% — which silently drops the scaling on a
    * customer-visible number rather than failing. Nothing reads
    * it today — `health.ts` and `fuel.ts` carry their own constants for the handful of elements they
    * scale — so this is a hazard note, not a live defect. The day something does need it, the
@@ -29,6 +29,21 @@ export interface AvlEntry {
    */
   multiplier?: string
   units?: string
+  /**
+   * DERIVED, not transcribed: the unit of `raw × multiplier`. `units` above stays verbatim because it
+   * is provenance; this is the only one arithmetic may read. Written by main.ts from corrections.ts,
+   * which is where an ambiguous row is decided by a human with a citation.
+   *
+   * THREE STATES, and the difference matters:
+   *   absent  — the Units cell IS the post-multiplier unit. Read `unitAfterMultiplier ?? units`.
+   *   string  — it is not, and this is; the Units cell described the raw wire value.
+   *   `null`  — REFUSED. No unit may be claimed, so show the number bare rather than mislabel it.
+   */
+  unitAfterMultiplier?: string | null
+  /** the wiki URL that settled `unitAfterMultiplier` — rule 8 travels with the artifact */
+  unitSource?: string
+  /** which decision in corrections.ts settled it, so the ARGUMENT is one lookup away, not 57 copies */
+  unitRule?: string
   description?: string
   /** The wiki's own "HW Support" column — which models can actually produce this element. */
   hwSupport?: string
