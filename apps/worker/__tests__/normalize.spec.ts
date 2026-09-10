@@ -327,3 +327,65 @@ describe('an exact 0/0 is never a valid fix, whatever the satellite count', () =
     expect(normalize({ ...basePayload, lat: 54.68, lon: 25.27, satellites: 0 }, hash).fixValid).toBe(false)
   })
 })
+
+/**
+ * A coordinate off the sphere.
+ *
+ * DEFENCE IN DEPTH — read normalize.ts's own comment before changing these. Off-sphere coordinates
+ * are already refused one layer earlier, at apps/ingest/src/persist.ts:27, and have been since the
+ * first ingest commit. This branch exists for producers that bypass that check: a replay or backfill
+ * tool, a test harness, or the next vendor decoder written by someone who never opens persist.ts.
+ *
+ * The shape being defended against is real. Ruptela's Mode-B no-fix record carries satellites 0xFF
+ * and lat = lon = 0x80000000 = -214.7483648, verified byte-exactly against the capture in
+ * https://github.com/traccar/traccar/issues/5152 — 29 records, CRC-16/KERMIT over the frame checks
+ * out; docs/protocols/ruptela.md has the analysis. It defeats BOTH value-level guards at once: 255 is greater than zero, and -214.7483648 is not
+ * null island. What it does NOT defeat is the ingest check, which is why the practical fix for that
+ * vendor lives in its decoder (translate the sentinel to 0/0 with satellites 0, as Teltonika does).
+ *
+ * These tests are written against the SHAPE rather than the vendor: whatever produces an impossible
+ * coordinate, the row survives, the evidence survives, and the fix does not count.
+ */
+describe('a coordinate off the sphere is stored, marked invalid, and keeps its evidence', () => {
+  it("refuses Ruptela's Mode-B no-fix sentinel, which passes both existing guards", () => {
+    const rec = normalize({ ...basePayload, lat: -214.7483648, lon: -214.7483648, satellites: 255 }, hash)
+    expect(rec.fixValid).toBe(false)
+    expect(rec.lat).toBe(0) // the column is NOT NULL and 005 constrains it to the sphere
+    expect(rec.lon).toBe(0)
+    // what the device actually sent is not destroyed by the substitution
+    expect(rec.attrs['offSphereLat']).toBe(-214.7483648)
+    expect(rec.attrs['offSphereLon']).toBe(-214.7483648)
+  })
+
+  it('refuses each axis independently', () => {
+    expect(normalize({ ...basePayload, lat: 91, lon: 25.27, satellites: 11 }, hash).fixValid).toBe(false)
+    expect(normalize({ ...basePayload, lat: 54.68, lon: 180.5, satellites: 11 }, hash).fixValid).toBe(false)
+  })
+
+  it('a NaN never reaches this guard — the payload schema refuses it one layer earlier', () => {
+    // Worth pinning: `Number.isFinite` in the guard reads like the NaN defence and is not. zod
+    // rejects the record before normalize sees it, so a NaN is a REJECTED FRAME, not an invalid
+    // fix — a different failure with a different metric. Anyone widening the guard should know
+    // which layer they are actually standing on.
+    expect(() => normalize({ ...basePayload, lat: Number.NaN, lon: 25.27, satellites: 11 }, hash)).toThrow()
+  })
+
+  it('leaves the poles and the antimeridian alone — they are real places, not sentinels', () => {
+    expect(normalize({ ...basePayload, lat: 90, lon: 180, satellites: 11 }, hash).fixValid).toBe(true)
+    expect(normalize({ ...basePayload, lat: -90, lon: -180, satellites: 11 }, hash).fixValid).toBe(true)
+    // and a normal fix is untouched by all of this
+    const ok = normalize({ ...basePayload, lat: 54.6872, lon: 25.2797, satellites: 11 }, hash)
+    expect(ok.fixValid).toBe(true)
+    expect(ok.lat).toBe(54.6872)
+    expect(ok.attrs['offSphereLat']).toBeUndefined()
+  })
+
+  it('reports the substitution as a nulled field, so it is visible in metrics rather than silent', () => {
+    const seen: string[] = []
+    normalize({ ...basePayload, lat: -214.7483648, lon: 0, satellites: 255 }, hash, undefined, (f) => seen.push(f))
+    expect(seen).toContain('lat')
+    expect(seen).toContain('lon')
+  })
+})
+
+
