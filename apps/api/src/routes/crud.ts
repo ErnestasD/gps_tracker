@@ -4,7 +4,7 @@ import type { Context } from 'hono'
 import type { Redis } from 'ioredis'
 import { z } from 'zod'
 
-import { loadDictionary, parseMultiplier } from '@orbetra/codec'
+import { loadDictionary } from '@orbetra/codec'
 import { AccountHasUsersError, AffiliateConflictError, clampTripsTake, DealDomainTakenError, TenantHasCommissionsError, DomainConflictError, DomainDuplicateError, DomainLimitError, DriverIbuttonConflictError, DriverNotInScopeError, DuplicateImeiError, GeofenceInvalidError, GeofenceTooLargeError, GeofenceTooComplexError, GeofenceLimitError, MAX_DOMAINS_PER_TENANT, readCanLatest, readFuelSeries, readHealthSeries, readOdometersKm, readLatestTelemetry, readPositions, toDeviceId, SendingDomainConflictError, type Db, type Pool, type TenantSendingDomain } from '@orbetra/db'
 import {
   ROLES,
@@ -85,6 +85,7 @@ import {
 } from '@orbetra/shared'
 
 import { hasEntitlement } from '../auth/entitlements.js'
+import { attrLabelsFor } from './attrLabels.js'
 import { currentSettings } from './deviceSettingsView.js'
 import { exceedsCommandLimit, MAX_COMMAND_TEXT, queueParamWrite, type ParamWrite } from './paramWrite.js'
 import { hashPassword } from '../auth/passwords.js'
@@ -1050,58 +1051,11 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
         const latest = await readLatestTelemetry(deps.pool, device.id, c.req.query('at'))
         // a device that has never reported is a real answer, not a 404: the UI says "nothing yet"
         if (latest === null) return json(c, { empty: true })
-        /**
-         * Describe EVERY element from this device's own table — here, where the table is known.
-         *
-         * Two problems, one lookup. The pipeline keeps an id-key whenever the dictionary name is
-         * ambiguous within the table (37 and 81 are both "Vehicle Speed"; 48, 84 and 89 are all
-         * "Fuel Level"), so an operator read "AVL 84 — 180" for 18.0 litres of fuel. And a NAMED
-         * key is no better off: the value is stored raw, so `Engine Total Hours (counted)` showed a
-         * bare "47" for 47 MINUTES (the wiki's unit for that element is minutes, whatever the name
-         * says) and `Fuel Consumed Counted` showed "10" for 1.0 litre (multiplier 0.1). Both read
-         * as plain, wrong numbers.
-         *
-         * So the units and multiplier travel with every element, named or not. The browser cannot
-         * do this lookup: the same id is a fuel level on one table and an axle weight on another,
-         * and only the server knows which table this device speaks.
-         */
+        // describe EVERY element from this device's own table — here, where the table is known.
+        // The mapping itself lives in attrLabels.ts, which explains what each field is for.
         const profile = await db.profiles.get(device.profileId)
         const dict = profile === null ? undefined : loadDictionary(profile.avlTable)
-        const attrLabels: Record<string, { name: string; units?: string; multiplier?: number; group?: string; max?: string }> = {}
-        if (dict !== undefined) {
-          // name → entry, for the keys the pipeline stored under their name. A name that is
-          // ambiguous in the table was never stored as a name (it became `io_<id>`), so the last
-          // writer winning here cannot mislabel anything the pipeline actually produces.
-          const byName = new Map([...dict.values()].map((e) => [e.name, e]))
-          for (const key of Object.keys(latest.attrs)) {
-            const m = /^io_(\d+)$/.exec(key)
-            const entry = m === null ? byName.get(key) : dict.get(Number(m[1]))
-            if (entry === undefined) continue
-            // the wiki writes the multiplier in two decimal conventions and 29% of cells are not
-            // numbers at all; `parseMultiplier` is the one place that is decided, and it refuses
-            // rather than guesses. A refused cell means the value is shown exactly as sent.
-            const mult = parseMultiplier(entry.multiplier)
-            attrLabels[key] = {
-              name: entry.name,
-              ...(entry.units !== undefined ? { units: entry.units } : {}),
-              ...(mult !== null ? { multiplier: mult } : {}),
-              /**
-               * The wiki's own "Parameter Group" and "Max" cells, passed through UNINTERPRETED.
-               *
-               * `group` is how the list is split into what the VEHICLE reports (CAN/OBD/tachograph)
-               * and what the TRACKER reports about itself — Teltonika's own classification, which
-               * beats any keyword list we would maintain against the element names.
-               *
-               * `max` is the discriminator for decoding a bitmask, and it has to travel because the
-               * name alone is not enough to identify one: "Door Status" is a 2-byte, max-16128 door
-               * bitmask on fmc150 (id 90) AND a 1-byte, max-255 Reefer IO element on fmb640 (id
-               * 10355). Decoding the second with the first's layout would invent a reading.
-               */
-              ...(entry.group !== undefined ? { group: entry.group } : {}),
-              ...(entry.max !== undefined ? { max: entry.max } : {}),
-            }
-          }
-        }
+        const attrLabels = attrLabelsFor(dict, Object.keys(latest.attrs))
         return json(c, { ...latest, attrLabels })
       } },
     // fuel series for the playback fuel graph (E08-3) — same gate + raw-SQL shape as positions

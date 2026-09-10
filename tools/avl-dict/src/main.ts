@@ -3,6 +3,13 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+import {
+  correctionFor,
+  emittedUnitAfterMultiplier,
+  isReadableMultiplier,
+  needsDeclaration,
+  unitAfterMultiplierFor,
+} from './corrections.js'
 import { applyRangeConsensus, applyTypeConsensus, parseAvlTable, type AvlEntry } from './parse.js'
 
 /**
@@ -50,6 +57,18 @@ async function fetchPage(page: string, fresh: boolean): Promise<string> {
 
 /** Compare two dictionary files ignoring the capture date, so an unchanged table is not rewritten. */
 const stripDate = (json: string): string => json.replace(/^ "retrieved_at": ".*",$/m, '')
+
+/**
+ * The same file with everything WE derive stripped out — what is left is what the wiki said.
+ *
+ * `retrieved_at` means "when this CONTENT was captured", and that claim is only true if the date
+ * moves when the WIKI moves. Without this, editing a sentence in corrections.ts re-dated all 36
+ * dictionaries as though Teltonika had published something, which is a rule-8 provenance claim we
+ * would be making about ourselves. So the capture date is carried forward whenever the wiki-derived
+ * half of the file is unchanged, however much the derived half moved.
+ */
+const stripDerived = (json: string): string =>
+  stripDate(json).replace(/,"unitAfterMultiplier":(?:"[^"]*"|null)/g, '').replace(/,"unit(?:Source|Rule|Reason)":"[^"]*"/g, '')
 
 /**
  * One element per LINE. Fully indented JSON put every field on its own line and turned a routine
@@ -305,7 +324,110 @@ async function main(): Promise<void> {
     return
   }
 
+  /**
+   * Refuse to write ANY dictionary while a single ambiguous row is undecided — and name every one of
+   * them, across every table, in ONE message.
+   *
+   * The Multiplier column means two opposite things depending on the row: sometimes `raw × multiplier`
+   * lands IN the Units cell, sometimes it converts AWAY from it. The display layer cannot tell, so it
+   * multiplied and then rescaled again — a healthy 12.6 V battery rendered `0.0 V`. Where the shape is
+   * ambiguous a human must have decided it in corrections.ts with a citation; a silent default there
+   * is how the bug shipped.
+   *
+   * This runs as a sweep BEFORE any file is written, rather than per table on the way past, because
+   * throwing inside the loop surfaced whichever table happened to sort first and hid the rest: the
+   * first run of this guard reported one row on fmb120 while fm6300, fmb640 and nine others were
+   * waiting behind it. A list you can work through beats eleven consecutive failures.
+   */
+  const undeclared: string[] = []
+  const unusable: string[] = []
   for (const { group, key } of named) {
+    for (const [id, el] of Object.entries(group.elements)) {
+      const declared = unitAfterMultiplierFor(key, id, el.units)
+      if (needsDeclaration(el.units, el.multiplier) && declared === undefined) {
+        undeclared.push(`${key}:${id} ${el.name} (units ${el.units}, multiplier ${el.multiplier})`)
+        continue
+      }
+      if (correctionFor(key, id) === undefined) continue
+      // A declaration that CHANGES the unit is a claim about arithmetic the READER must perform, so
+      // the reader has to be able to perform it. `parseMultiplier` refuses `0.01*` and friends, and
+      // the browser would then label the UNMULTIPLIED wire value with the post-multiplier unit —
+      // 12600 rendered as "12600 V", worse than the 0.0 V this whole change exists to fix.
+      if (declared !== undefined && declared !== null && declared !== el.units && !isReadableMultiplier(el.multiplier)) {
+        unusable.push(`${key}:${id} ${el.name}: declared "${declared}" but multiplier "${el.multiplier}" is not a number a reader can apply`)
+      }
+      // A "stated" landing says the Units cell already describes the result. On a row with no Units
+      // cell there is no such cell, and the declaration silently degrades into a refusal — a state
+      // nobody chose. Say so instead.
+      if (declared === null && correctionFor(key, id)!.landing.kind === 'stated') {
+        unusable.push(`${key}:${id} ${el.name}: declared as "stated" but the row has NO Units cell to state`)
+      }
+    }
+  }
+  if (undeclared.length > 0 || unusable.length > 0) {
+    if (undeclared.length > 0) {
+      console.error(
+        `\n${undeclared.length} element(s) carry a scaling multiplier AND an SI-prefixed unit, which is the ` +
+          `shape the display layer cannot read on its own. Declare each in tools/avl-dict/src/corrections.ts ` +
+          `with the unit of (raw x multiplier) and the source that settles it:`,
+      )
+      for (const u of undeclared) console.error(`  ${u}`)
+    }
+    if (unusable.length > 0) {
+      console.error(
+        `\n${unusable.length} declaration(s) in tools/avl-dict/src/corrections.ts cannot be honoured by a ` +
+          `reader of the generated file:`,
+      )
+      for (const u of unusable) console.error(`  ${u}`)
+    }
+    /**
+     * NOTHING is written, and there is deliberately no `--allow-…` escape hatch.
+     *
+     * The sibling guards are more forgiving for reasons that do not apply here. `--allow-remap`
+     * exists because Teltonika splitting a template is a REAL event a human confirms and then
+     * accepts; the shrink guard skips only the affected table because a parser failure is local to
+     * one page. An undeclared ambiguous row is neither: it is a question with an answer, the answer
+     * is one wiki row away, and the only way to "allow" it is to guess — which is precisely the
+     * silent default that shipped `0.0 V` on a healthy battery. Half-updating 35 files while the
+     * 36th waits on a decision would also leave the corpus in a state no one chose.
+     *
+     * Reported through the tool's own discipline rather than thrown: a `throw` out of `void main()`
+     * surfaces as an unhandled-rejection stack trace and skips the shrink and stale-file reports
+     * below, so the operator sees a crash instead of a work list.
+     */
+    console.error('\n  NOTHING was written — every dictionary waits on these decisions')
+    process.exitCode = 1
+    return
+  }
+
+  for (const { group, key } of named) {
+    for (const [id, el] of Object.entries(group.elements)) {
+      /**
+       * Emitted on the 57 rows where the answer is not derivable from `units` alone — not on all
+       * 13,847, and not only on the 18 that change.
+       *
+       * Both halves are deliberate. Writing it everywhere would be ~5,200 copies of the Units cell,
+       * which makes the field unreviewable in a diff and trains a reader to skim it. Writing it only
+       * where it DIFFERS would leave the file unable to prove the other half of the decision: a row
+       * where a human confirmed "the cell already describes the result" would look exactly like a row
+       * nobody had looked at, and the shipped artifact could no longer be checked on its own. So
+       * every AMBIGUOUS row carries it — including the confirmations — and every row that differs
+       * carries it whether or not it was ambiguous.
+       *
+       * A reader needs `unitAfterMultiplier ?? units`; absent therefore means "the cell is already
+       * the post-multiplier unit", guaranteed by the sweep above. `null` is written explicitly and
+       * means the opposite of absent: we REFUSE to name a unit, so show the number bare rather than
+       * label it wrongly.
+       */
+      const emit = emittedUnitAfterMultiplier(key, id, el.units, el.multiplier)
+      if (emit !== undefined) el.unitAfterMultiplier = emit
+      const c = correctionFor(key, id)
+      if (c !== undefined && el.unitAfterMultiplier !== undefined) {
+        el.unitSource = c.source
+        el.unitRule = c.rule
+      }
+    }
+
     const file = {
       table: key,
       // the page of the model the file is NAMED after, not whichever model sorted first into the
@@ -323,8 +445,14 @@ async function main(): Promise<void> {
     // diff" — the whole point of having a generator — into a wall of date changes that hides the one
     // element Teltonika actually edited. The date therefore means "when this CONTENT was captured".
     const path = join(OUT, `${key}.json`)
-    const next = serialise(file)
     const prev = existsSync(path) ? readFileSync(path, 'utf8') : ''
+    // Keep the previous capture date when only OUR derived fields moved — see `stripDerived`. The
+    // date is a claim about the wiki, so it may only advance when the wiki does.
+    let next = serialise(file)
+    if (prev !== '' && stripDerived(prev) === stripDerived(next)) {
+      const was = /^ "retrieved_at": "(.*)",$/m.exec(prev)?.[1]
+      if (was !== undefined && was !== retrieved) next = serialise({ ...file, retrieved_at: was })
+    }
     // A dictionary that SHRINKS is a parser failure, not a smaller table. A non-greedy table match
     // once truncated FM36 at a nested <table> inside a Description cell and shipped 12 of 137
     // elements — losing Ignition, Movement, the Dallas temperatures and the odometer — with an

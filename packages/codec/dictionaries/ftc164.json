@@ -1,7 +1,7 @@
 {
  "table": "ftc164",
  "source_url": "https://wiki.teltonika-gps.com/view/FTC164_Teltonika_Data_Sending_Parameters_ID",
- "retrieved_at": "2026-09-03",
+ "retrieved_at": "2026-09-10",
  "models": [
   "FTC164",
   "FTM164"
@@ -57,10 +57,10 @@
   "181": {"name":"GNSS PDOP","bytes":"2","type":"Unsigned","min":"0","max":"500","units":"m","description":"GNSS position dilution of precision. Normal PDOP is below 3 – the lower the number, the more accurate reported location is.","group":"Permanent I/O elements"},
   "182": {"name":"GNSS HDOP","bytes":"2","type":"Unsigned","min":"0","max":"500","units":"m","description":"GNSS horizontal dilution of precision. Normal HDOP is below 2 – the lower the number, the more accurate reported location is.","group":"Permanent I/O elements"},
   "199": {"name":"Trip Odometer","bytes":"4","type":"Unsigned","min":"0","max":"2147483647","units":"m","description":"Trip distance value calculated by GNSS","group":"Permanent I/O elements"},
-  "200": {"name":"Sleep Mode","bytes":"1","type":"Unsigned","min":"0","max":"2","description":"0 – Normal Mode(Device is not in sleep mode) 1 – Not used 2 – Not used 3 – Online Deep Sleep 4 – Deep Sleep 5 – Power Off Sleep","group":"Permanent I/O elements"},
+  "200": {"name":"Sleep Mode","bytes":"1","type":"Unsigned","min":"0","max":"5","description":"0 – Normal Mode(Device is not in sleep mode) 1 – Not used 2 – Not used 3 – Online Deep Sleep 4 – Deep Sleep 5 – Power Off Sleep","group":"Permanent I/O elements"},
   "205": {"name":"GSM Cell ID","bytes":"4","type":"Unsigned","min":"0","max":"2147483647","description":"GSM base station ID","group":"Permanent I/O elements"},
   "206": {"name":"GSM Area Code","bytes":"2","type":"Unsigned","min":"0","max":"65535","description":"Location Area code (LAC), it depends on GSM operator. It provides unique number which assigned to a set of base GSM stations","group":"Permanent I/O elements"},
-  "237": {"name":"Network Type","bytes":"1","type":"Unsigned","min":"0","max":"1","description":"0 - 3G 1 - GSM 2 - 4G 3 - LTE CAT M1 4 - LTE CAT NB1 99 - Unknown","group":"Permanent I/O elements"},
+  "237": {"name":"Network Type","bytes":"1","type":"Unsigned","min":"0","max":"99","description":"0 - 3G 1 - GSM 2 - 4G 3 - LTE CAT M1 4 - LTE CAT NB1 99 - Unknown","group":"Permanent I/O elements"},
   "239": {"name":"Ignition","bytes":"1","type":"Unsigned","min":"0","max":"1","description":"0 – Ignition Off 1 – Ignition On","group":"Permanent I/O Elements"},
   "240": {"name":"Movement","bytes":"1","type":"Unsigned","min":"0","max":"1","description":"0 – Movement Off 1 – Movement On","group":"Permanent I/O Elements"},
   "241": {"name":"GSM operator code","bytes":"4","type":"Unsigned","min":"0","max":"4294967295","description":"Currently used GSM Operator code","group":"Permanent I/O elements"},
@@ -94,14 +94,17 @@
   "843": {"name":"Digital Output 3 Overcurrent","bytes":"1","type":"Unsigned","min":"0","max":"1","description":"Logic: 0/1","group":"Permanent I/O elements"},
   "844": {"name":"Digital Output 4 Overcurrent","bytes":"1","type":"Unsigned","min":"0","max":"1","description":"Logic: 0/1","group":"Permanent I/O elements"},
   "1148": {"name":"Connectivity quality","bytes":"4","type":"Unsigned","min":"0","max":"2147483647","units":"dBm","description":"Provides detailed signal quality information in LTE, eMTC (CAT-Mx) and NB-IoT modes: RSSI (byte 0): 0 - 255 in dBm (negative values) RSRP (byte 1): 0 - 255 in dBm (negative values) SINR (byte 2): 0 - 250 which translates to -20dB to +30dB (1/5th of dB) RSRQ (byte 3): 0 - 255 in dB (negative values)","group":"Permanent I/O elements"},
+  "1149": {"name":"Current LTE Band","bytes":"","type":"","min":"0","max":"85","description":"Provides information about LTE BAND the device is connected to. Possible bands in LTE, eMTC (CAT-Mx) and NBIoT modes: 1 - 85: LTE BAND 1 - LTE BAND 85 0: No LTE Band available.","group":"Permanent I/O elements"},
   "1429": {"name":"Crash average vector","bytes":"8","type":"Unsigned","units":"mG","description":"Stores the average vector calculated during the crash: 2B - X axis, 2B - Y axis, 2B - Z axis, 2B - magnitude in mG.","group":"Eventual I/O elements"},
   "1430": {"name":"Crash direction","bytes":"","type":"Unsigned","description":"Stores the indication if the accelerometer is calibrated. Also, indicates the direction of the crash. 1 bit (highest bit) indicates calibration status, rest of the bits indicates crash direction.","group":"Eventual I/O elements"},
   "1431": {"name":"Crash duration","bytes":"","type":"Unsigned","description":"Duration of the crash event","group":"Eventual I/O elements"},
   "1432": {"name":"Crash max vector","bytes":"8","type":"Unsigned","units":"mG","description":"Stores the max vector calculated during the crash: 2B - X axis, 2B - Y axis, 2B - Z axis, 2B - magnitude in mG.","group":"Eventual I/O elements"},
   "1437": {"name":"Side Vector Delta","bytes":"1","type":"Unsigned","min":"0","max":"180","units":"deg","description":"Represents the angle difference between the calculated accelerometer calibration and the device's actual mounting position","group":"Permanent I/O elements"},
   "1440": {"name":"Accel Calibration Quality","bytes":"1","type":"Unsigned","min":"0","max":"100","units":"%","description":"Calibration quality index. A value of 0 indicates the worst quality; 100 indicates perfect calibration.","group":"Permanent I/O elements"},
+  "1452": {"name":"Faulty Device Mounting","bytes":"","type":"","min":"0","max":"3","description":"Device mounting status: 0 - device is mounted properly, 1 - high vibrations detected, 2 - device mounting changed, 3 - GNSS antenna angle invalid.","group":"Permanent I/O elements"},
   "1474": {"name":"Beacon Presence","bytes":"4","type":"Signed","min":"0","max":"1","description":"Beacon presence indication","group":"Bluetooth accessories I/O elements"},
-  "10005": {"name":"Digital Output 4","bytes":"1","type":"Unsigned","min":"0","max":"1","description":"Logic: 0/1","group":"Permanent I/O elements"},
+  "10001": {"name":"Digital Output 4","bytes":"","type":"","description":"State of digital output 4.","group":"Permanent I/O elements"},
+  "10005": {"name":"Digital Output 4 overcurrent","bytes":"1","type":"Unsigned","min":"0","max":"1","description":"Logic: 0/1","group":"Permanent I/O elements"},
   "10808": {"name":"Magnet 1","bytes":"1","type":"Unsigned","min":"0","max":"1","description":"Magnet measured by EYE Sensor by EYE Sensor 1","group":"Bluetooth accessories I/O elements"},
   "10809": {"name":"Magnet 2","bytes":"1","type":"Unsigned","min":"0","max":"1","description":"Magnet measured by EYE Sensor by EYE Sensor 2","group":"Bluetooth accessories I/O elements"},
   "10810": {"name":"Magnet 3","bytes":"1","type":"Unsigned","min":"0","max":"1","description":"Magnet measured by EYE Sensor by EYE Sensor 3","group":"Bluetooth accessories I/O elements"},
@@ -220,6 +223,8 @@
   "13482": {"name":"Roll 7","bytes":"2","type":"Signed","min":"-180","max":"180","description":"Roll angle measured by EYE Sensor 7","group":"Bluetooth accessories I/O elements"},
   "13483": {"name":"Roll 8","bytes":"2","type":"Signed","min":"-180","max":"180","description":"Roll angle measured by EYE Sensor 8","group":"Bluetooth accessories I/O elements"},
   "13484": {"name":"Roll 9","bytes":"2","type":"Signed","min":"-180","max":"180","description":"Roll angle measured by EYE Sensor 9","group":"Bluetooth accessories I/O elements"},
-  "13485": {"name":"Roll 10","bytes":"2","type":"Signed","min":"-180","max":"180","description":"Roll angle measured by EYE Sensor 10","group":"Bluetooth accessories I/O elements"}
+  "13485": {"name":"Roll 10","bytes":"2","type":"Signed","min":"-180","max":"180","description":"Roll angle measured by EYE Sensor 10","group":"Bluetooth accessories I/O elements"},
+  "14200": {"name":"Digital Input 5","bytes":"","type":"","description":"State of digital input 5.","group":"Permanent I/O elements"},
+  "14210": {"name":"Analog Input 5","bytes":"","type":"","units":"mV","description":"Analog input 5 value in milivolts (mV).","group":"Permanent I/O elements"}
  }
 }
